@@ -22,10 +22,28 @@ var (
 		},
 		[]string{"event"},
 	)
+	rejectTxNum = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "txpool",
+			Name:      "reject_tx_counter",
+			Help:      "the total number of rejected transactions",
+		},
+		[]string{"reason"},
+	)
+	removeTxNum = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "txpool",
+			Name:      "remove_tx_counter",
+			Help:      "the total number of transactions which removed from txpool",
+		},
+		[]string{"reason"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(processEventDuration)
 	prometheus.MustRegister(poolTxNum)
 	prometheus.MustRegister(readyTxNum)
+	prometheus.MustRegister(rejectTxNum)
+	prometheus.MustRegister(removeTxNum)
 }

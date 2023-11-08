@@ -70,14 +70,15 @@ func NewAxiomLedger(rep *repo.Repo, ctx context.Context, cancel context.CancelFu
 			return getNonceFn(types.NewAddressByStr(addr))
 		}
 		txpoolConf := txpool2.Config{
-			Logger:              loggers.Logger(loggers.TxPool),
-			BatchSize:           rep.EpochInfo.ConsensusParams.BlockMaxTxNum,
-			PoolSize:            poolConf.PoolSize,
-			ToleranceTime:       poolConf.ToleranceTime.ToDuration(),
-			ToleranceRemoveTime: poolConf.ToleranceRemoveTime.ToDuration(),
-			ToleranceNonceGap:   poolConf.ToleranceNonceGap,
-			GetAccountNonce:     fn,
-			IsTimed:             rep.EpochInfo.ConsensusParams.EnableTimedGenEmptyBlock,
+			Logger:                loggers.Logger(loggers.TxPool),
+			BatchSize:             rep.EpochInfo.ConsensusParams.BlockMaxTxNum,
+			PoolSize:              poolConf.PoolSize,
+			ToleranceTime:         poolConf.ToleranceTime.ToDuration(),
+			ToleranceRemoveTime:   poolConf.ToleranceRemoveTime.ToDuration(),
+			ToleranceNonceGap:     poolConf.ToleranceNonceGap,
+			CleanEmptyAccountTime: poolConf.CleanEmptyAccountTime.ToDuration(),
+			GetAccountNonce:       fn,
+			IsTimed:               rep.EpochInfo.ConsensusParams.EnableTimedGenEmptyBlock,
 		}
 		axm.TxPool, err = txpool2.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
 		if err != nil {

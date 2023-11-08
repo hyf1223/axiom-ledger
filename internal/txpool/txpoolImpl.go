@@ -33,15 +33,16 @@ var (
 
 // txPoolImpl contains all currently known transactions.
 type txPoolImpl[T any, Constraint types.TXConstraint[T]] struct {
-	logger              logrus.FieldLogger
-	selfID              uint64
-	batchSize           uint64
-	isTimed             bool
-	txStore             *transactionStore[T, Constraint] // store all transaction info
-	toleranceNonceGap   uint64
-	toleranceTime       time.Duration
-	toleranceRemoveTime time.Duration
-	poolMaxSize         uint64
+	logger                logrus.FieldLogger
+	selfID                uint64
+	batchSize             uint64
+	isTimed               bool
+	txStore               *transactionStore[T, Constraint] // store all transaction info
+	toleranceNonceGap     uint64
+	toleranceTime         time.Duration
+	toleranceRemoveTime   time.Duration
+	cleanEmptyAccountTime time.Duration
+	poolMaxSize           uint64
 
 	getAccountNonce       GetAccountNonceFunc
 	notifyGenerateBatch   bool
@@ -61,6 +62,10 @@ func (p *txPoolImpl[T, Constraint]) Start() error {
 	go p.listenEvent()
 
 	err := p.timerMgr.StartTimer(timer.RemoveTx)
+	if err != nil {
+		return err
+	}
+	err = p.timerMgr.StartTimer(timer.CleanEmptyAccount)
 	if err != nil {
 		return err
 	}
@@ -111,6 +116,8 @@ func (p *txPoolImpl[T, Constraint]) processEvent(event txPoolEvent) []txPoolEven
 	case *consensusEvent:
 		p.dispatchConsensusEvent(e)
 		return nil
+	case *localEvent:
+		p.dispatchLocalEvent(e)
 	default:
 		p.logger.Warning("unknown event type", e)
 	}
@@ -119,7 +126,7 @@ func (p *txPoolImpl[T, Constraint]) processEvent(event txPoolEvent) []txPoolEven
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []txPoolEvent {
-	p.logger.Debugf("start dispatch add txs event:%s", addTxsEventToStr[event.EventType])
+	//p.logger.Debugf("start dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	var (
 		fullErr                      error
 		err                          error
@@ -128,12 +135,16 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 		removeEvent                  *removeTxsEvent
 		nextEvents                   []txPoolEvent
 	)
-	// todo: add metrics for reject tx(record remote and local tx)
 	if p.statusMgr.In(PoolFull) {
 		fullErr = ErrTxPoolFull
+		traceRejectTx(ErrTxPoolFull.Error())
 	}
 	start := time.Now()
 	metricsPrefix := "addTxs_"
+	defer func() {
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, addTxsEventToStr[event.EventType]), time.Since(start))
+		//p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch add txs event:%s", addTxsEventToStr[event.EventType])
+	}()
 	switch event.EventType {
 	case localTxEvent:
 		req := event.Event.(*reqLocalTx[T, Constraint])
@@ -144,7 +155,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 			notifyGenBatch, completionMissingBatchHashes, removeEvent, err = p.addNewRequests([]*T{req.tx}, true, false, true)
 			// return err for local tx
 			req.errCh <- err
-			processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "localTx")).Observe(time.Since(start).Seconds())
 		}
 
 	case remoteTxsEvent:
@@ -153,7 +163,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 		} else {
 			req := event.Event.(*reqRemoteTxs[T, Constraint])
 			notifyGenBatch, completionMissingBatchHashes, removeEvent, _ = p.addNewRequests(req.txs, false, false, true)
-			processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "remoteTx")).Observe(time.Since(start).Seconds())
 		}
 
 	case missingTxsEvent:
@@ -164,7 +173,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 		} else {
 			err = p.handleReceiveMissingRequests(req.batchHash, req.txs)
 			req.errCh <- err
-			processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "missingTx")).Observe(time.Since(start).Seconds())
 		}
 
 	default:
@@ -187,36 +195,51 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 	if removeEvent != nil {
 		nextEvents = append(nextEvents, removeEvent)
 	}
-	p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	return nextEvents
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchRemoveTxsEvent(event *removeTxsEvent) {
 	p.logger.Debugf("start dispatch remove txs event:%s", removeTxsEventToStr[event.EventType])
-	start := time.Now()
-	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
-		"end dispatch remove txs event:%s", removeTxsEventToStr[event.EventType])
 	metricsPrefix := "removeTxs_"
+	start := time.Now()
+	defer func() {
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, removeTxsEventToStr[event.EventType]), time.Since(start))
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+			"end dispatch remove txs event:%s", removeTxsEventToStr[event.EventType])
+	}()
+	var (
+		removeCount int
+		err         error
+	)
 	switch event.EventType {
 	case highNonceTxsEvent:
 		req := event.Event.(*reqHighNonceTxs)
-		count, err := p.removeTxsByAccount(req.account, req.highNonce)
+		removeCount, err = p.removeTxsByAccount(req.account, req.highNonce)
 		if err != nil {
 			p.logger.Warningf("remove high nonce txs by account failed: %s", err)
 		}
-		if count > 0 {
-			p.logger.Warningf("successfully remove high nonce txs by account: %s, count: %d", req.account, count)
-			processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "highNonceTx")).Observe(time.Since(start).Seconds())
+		if removeCount > 0 {
+			p.logger.Warningf("successfully remove high nonce txs by account: %s, count: %d", req.account, removeCount)
+			traceRemovedTx("highNonce", removeCount)
 		}
 	case timeoutTxsEvent:
-		p.handleRemoveTimeoutTxs()
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "timeoutTx")).Observe(time.Since(start).Seconds())
+		removeCount = p.handleRemoveTimeoutTxs()
+		if removeCount > 0 {
+			p.logger.Warningf("Successful remove timeout txs, count: %d", removeCount)
+			traceRemovedTx("timeout", removeCount)
+		}
 	case committedTxsEvent:
-		p.handleRemoveStateUpdatingTxs(event.Event.(*reqRemoveCommittedTxs).txHashList)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "committedTx")).Observe(time.Since(start).Seconds())
+		removeCount = p.handleRemoveStateUpdatingTxs(event.Event.(*reqRemoveCommittedTxs).txHashList)
+		if removeCount > 0 {
+			p.logger.Warningf("Successfully remove committed txs, count: %d", removeCount)
+			traceRemovedTx("committed", removeCount)
+		}
 	case batchedTxsEvent:
-		p.handleRemoveBatches(event.Event.(*reqRemoveBatchedTxs).batchHashList)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "batchedTx")).Observe(time.Since(start).Seconds())
+		removeCount = p.handleRemoveBatches(event.Event.(*reqRemoveBatchedTxs).batchHashList)
+		if removeCount > 0 {
+			p.logger.Infof("Successfully remove batched txs, count: %d", removeCount)
+			traceRemovedTx("batched", removeCount)
+		}
 	default:
 		p.logger.Warningf("unknown removeTxs event type: %d", event.EventType)
 	}
@@ -228,8 +251,11 @@ func (p *txPoolImpl[T, Constraint]) dispatchRemoveTxsEvent(event *removeTxsEvent
 func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 	p.logger.Debugf("start dispatch batch event:%s", batchEventToStr[event.EventType])
 	start := time.Now()
-	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch batch event:%d", event.EventType)
 	metricsPrefix := "batch_"
+	defer func() {
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, batchEventToStr[event.EventType]), time.Since(start))
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch batch event:%d", event.EventType)
+	}()
 	switch event.EventType {
 	case txpool.GenBatchTimeoutEvent, txpool.GenBatchFirstEvent, txpool.GenBatchSizeEvent, txpool.GenBatchNoTxTimeoutEvent:
 		// it means primary receive the notify signal, and trigger the generate batch size event
@@ -243,7 +269,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 		if err != nil {
 			p.logger.Warning(err)
 		}
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, batchEventToStr[event.EventType])).Observe(time.Since(start).Seconds())
 	case txpool.ReConstructBatchEvent:
 		req := event.Event.(*reqReConstructBatch[T, Constraint])
 		deDuplicateTxHashes, err := p.handleReConstructBatchByOrder(req.oldBatch)
@@ -254,7 +279,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 				deDuplicateTxHashes: deDuplicateTxHashes,
 			}
 		}
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "reConstructBatch")).Observe(time.Since(start).Seconds())
 	case txpool.GetTxsForGenBatchEvent:
 		req := event.Event.(*reqGetTxsForGenBatch[T, Constraint])
 		txs, localList, missingTxsHash, err := p.handleGetRequestsByHashList(req.batchHash, req.timestamp, req.hashList, req.deDuplicateTxHashes)
@@ -269,7 +293,6 @@ func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 			req.respCh <- resp
 		}
 
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "getTxsForGenBatch")).Observe(time.Since(start).Seconds())
 	default:
 		p.logger.Warningf("unknown generate batch event type: %s", batchEventToStr[event.EventType])
 	}
@@ -291,40 +314,42 @@ func (p *txPoolImpl[T, Constraint]) handleGenBatchRequest(event *batchEvent) err
 
 func (p *txPoolImpl[T, Constraint]) dispatchGetPoolInfoEvent(event *poolInfoEvent) {
 	p.logger.Debugf("start dispatch get pool info event:%s", poolInfoEventToStr[event.EventType])
-	start := time.Now()
-	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
-		"end dispatch get pool info event:%s", poolInfoEventToStr[event.EventType])
 	metricsPrefix := "getInfo_"
+	start := time.Now()
+	defer func() {
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+			"end dispatch get pool info event:%s", poolInfoEventToStr[event.EventType])
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, poolInfoEventToStr[event.EventType]), time.Since(start))
+	}()
 	switch event.EventType {
 	case reqPendingTxCountEvent:
 		req := event.Event.(*reqPendingTxCountMsg)
 		req.ch <- p.handleGetTotalPendingTxCount()
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "pendingTxCount")).Observe(time.Since(start).Seconds())
 	case reqNonceEvent:
 		req := event.Event.(*reqNonceMsg)
 		req.ch <- p.handleGetPendingTxCountByAccount(req.account)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "accountNonce")).Observe(time.Since(start).Seconds())
 	case reqTxEvent:
 		req := event.Event.(*reqTxMsg[T, Constraint])
 		req.ch <- p.handleGetPendingTxByHash(req.hash)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "pendingTx")).Observe(time.Since(start).Seconds())
 	case reqAccountMetaEvent:
 		req := event.Event.(*reqAccountPoolMetaMsg[T, Constraint])
 		req.ch <- p.handleGetAccountMeta(req.account, req.full)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "accountMeta")).Observe(time.Since(start).Seconds())
 	case reqPoolMetaEvent:
 		req := event.Event.(*reqPoolMetaMsg[T, Constraint])
 		req.ch <- p.handleGetMeta(req.full)
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "poolMeta")).Observe(time.Since(start).Seconds())
 	}
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchConsensusEvent(event *consensusEvent) {
 	p.logger.Debugf("start dispatch consensus event:%s", consensusEventToStr[event.EventType])
 	start := time.Now()
-	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
-		"end dispatch consensus event:%s", consensusEventToStr[event.EventType])
 	metricsPrefix := "consensus_"
+	defer func() {
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, consensusEventToStr[event.EventType]), time.Since(start))
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+			"end dispatch consensus event:%s", consensusEventToStr[event.EventType])
+	}()
+
 	switch event.EventType {
 	case SendMissingTxsEvent:
 		req := event.Event.(*reqSendMissingTxs[T, Constraint])
@@ -333,24 +358,56 @@ func (p *txPoolImpl[T, Constraint]) dispatchConsensusEvent(event *consensusEvent
 			resp: txs,
 			err:  err,
 		}
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "sendMissingTxs")).Observe(time.Since(start).Seconds())
-
 	case FilterReBroadcastTxsEvent:
 		req := event.Event.(*reqFilterReBroadcastTxs[T, Constraint])
-		txs := p.handleFilterOutOfDateRequests()
+		txs := p.handleFilterOutOfDateRequests(req.timeout)
 		req.respCh <- txs
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "filterReBroadcastTxs")).Observe(time.Since(start).Seconds())
-
 	case RestoreOneBatchEvent:
 		req := event.Event.(*reqRestoreOneBatch)
 		err := p.handleRestoreOneBatch(req.batchHash)
 		req.errCh <- err
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "restoreOneBatch")).Observe(time.Since(start).Seconds())
-
 	case RestoreAllBatchedEvent:
 		p.handleRestorePool()
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "restoreAllBatched")).Observe(time.Since(start).Seconds())
 	}
+}
+
+func (p *txPoolImpl[T, Constraint]) dispatchLocalEvent(event *localEvent) {
+	p.logger.Debugf("start dispatch local event:%s", localEventToStr[event.EventType])
+	start := time.Now()
+	metricsPrefix := "localEvent_"
+	defer func() {
+		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, localEventToStr[event.EventType]), time.Since(start))
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+			"end dispatch local event:%s", localEventToStr[event.EventType])
+	}()
+	switch event.EventType {
+	case gcAccountEvent:
+		count := p.handleGcAccountEvent()
+		if count > 0 {
+			p.logger.Debugf("handle gc account event, count: %d", count)
+		}
+	}
+}
+
+func (p *txPoolImpl[T, Constraint]) handleGcAccountEvent() int {
+	dirtyAccount := make([]string, 0)
+	now := time.Now().UnixNano()
+	for account, list := range p.txStore.allTxs {
+		if list.checkIfGc(now, p.cleanEmptyAccountTime.Nanoseconds()) {
+			dirtyAccount = append(dirtyAccount, account)
+		}
+	}
+
+	lo.ForEach(dirtyAccount, func(account string, _ int) {
+		p.cleanAccountInCache(account)
+	})
+	return len(dirtyAccount)
+}
+
+func (p *txPoolImpl[T, Constraint]) cleanAccountInCache(account string) {
+	delete(p.txStore.allTxs, account)
+	delete(p.txStore.nonceCache.commitNonces, account)
+	delete(p.txStore.nonceCache.pendingNonces, account)
 }
 
 func (p *txPoolImpl[T, Constraint]) postEvent(event txPoolEvent) {
@@ -422,6 +479,7 @@ func (p *txPoolImpl[T, Constraint]) addNewRequests(txs []*T, local, isReplace bo
 					p.logger.Warningf(err.Error())
 					return false, nil, nil, err
 				}
+				traceRejectTx(ErrNonceTooLow.Error())
 				continue
 			} else {
 				p.logger.Warningf("Receive transaction [account: %s, nonce: %d, hash: %s], but we required %d,"+
@@ -446,8 +504,8 @@ func (p *txPoolImpl[T, Constraint]) addNewRequests(txs []*T, local, isReplace bo
 						highNonce: currentSeqNo,
 					},
 				}
-
 			}
+			traceRejectTx(ErrNonceTooHigh.Error())
 			return false, nil, removeEvent, err
 		}
 
@@ -459,6 +517,7 @@ func (p *txPoolImpl[T, Constraint]) addNewRequests(txs []*T, local, isReplace bo
 			if local {
 				return false, nil, nil, err
 			}
+			traceRejectTx(ErrDuplicateTx.Error())
 			continue
 		}
 
@@ -539,11 +598,13 @@ func (p *txPoolImpl[T, Constraint]) addNewRequests(txs []*T, local, isReplace bo
 	return notifyGenBatch, completionMissingBatchHashes, nil, nil
 }
 
-func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() {
+func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() int {
 	now := time.Now().UnixNano()
 	removedTxs := make(map[string][]*internalTransaction[T, Constraint])
-	var count uint64
-	var index int
+	var (
+		count int
+		index int
+	)
 	p.txStore.removeTTLIndex.data.Ascend(func(a btree.Item) bool {
 		index++
 		removeKey := a.(*orderedIndexKey)
@@ -599,9 +660,7 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() {
 		p.setPriorityNonBatchSize(readyNum)
 	}
 
-	if count > 0 {
-		p.logger.Warningf("Successful remove timeout txs, count: %d", count)
-	}
+	return count
 }
 
 // GetUncommittedTransactions returns the uncommitted transactions.
@@ -656,6 +715,11 @@ func newTxPoolImpl[T any, Constraint types.TXConstraint[T]](config Config) (*txP
 	} else {
 		txpoolImp.toleranceRemoveTime = config.ToleranceRemoveTime
 	}
+	if config.CleanEmptyAccountTime == 0 {
+		txpoolImp.cleanEmptyAccountTime = DefaultCleanEmptyAccountTime
+	} else {
+		txpoolImp.cleanEmptyAccountTime = config.CleanEmptyAccountTime
+	}
 	if config.ToleranceNonceGap == 0 {
 		txpoolImp.toleranceNonceGap = DefaultToleranceNonceGap
 	} else {
@@ -668,6 +732,10 @@ func newTxPoolImpl[T any, Constraint types.TXConstraint[T]](config Config) (*txP
 	if err != nil {
 		return nil, err
 	}
+	err = txpoolImp.timerMgr.CreateTimer(timer.CleanEmptyAccount, txpoolImp.cleanEmptyAccountTime, txpoolImp.handleRemoveTimeout)
+	if err != nil {
+		return nil, err
+	}
 
 	txpoolImp.logger.Infof("TxPool pool size = %d", txpoolImp.poolMaxSize)
 	txpoolImp.logger.Infof("TxPool batch size = %d", txpoolImp.batchSize)
@@ -676,6 +744,7 @@ func newTxPoolImpl[T any, Constraint types.TXConstraint[T]](config Config) (*txP
 	txpoolImp.logger.Infof("TxPool tolerance time = %v", config.ToleranceTime)
 	txpoolImp.logger.Infof("TxPool tolerance remove time = %v", txpoolImp.toleranceRemoveTime)
 	txpoolImp.logger.Infof("TxPool tolerance nonce gap = %d", txpoolImp.toleranceNonceGap)
+	txpoolImp.logger.Infof("TxPool clean empty account time = %v", txpoolImp.cleanEmptyAccountTime)
 	return txpoolImp, nil
 }
 
@@ -896,9 +965,10 @@ func (p *txPoolImpl[T, Constraint]) RemoveBatches(batchHashList []string) {
 
 // RemoveBatches removes several batches by given digests of
 // transaction batches from the pool(batchedTxs).
-func (p *txPoolImpl[T, Constraint]) handleRemoveBatches(batchHashList []string) {
+func (p *txPoolImpl[T, Constraint]) handleRemoveBatches(batchHashList []string) int {
 	// update current cached commit nonce for account
 	p.logger.Debugf("RemoveBatches: batch len:%d", len(batchHashList))
+	var count int
 	updateAccounts := make(map[string]uint64)
 	for _, batchHash := range batchHashList {
 		batch, ok := p.txStore.batchesCache[batchHash]
@@ -930,6 +1000,7 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveBatches(batchHashList []string) 
 			p.txStore.deletePoolTx(txHash)
 			delete(p.txStore.batchedTxs, *pointer)
 			dirtyAccounts[pointer.account] = true
+			count++
 		}
 		// clean related txs info in cache
 		for account := range dirtyAccounts {
@@ -951,6 +1022,7 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveBatches(batchHashList []string) 
 		"priority len: %d, parkingLot len: %d, batchedTx len: %d, txHashMap len: %d", p.txStore.priorityNonBatchSize,
 		len(p.txStore.batchesCache), p.txStore.priorityIndex.size(), p.txStore.parkingLotIndex.size(),
 		len(p.txStore.batchedTxs), len(p.txStore.txHashMap))
+	return count
 }
 
 func (p *txPoolImpl[T, Constraint]) cleanTxsBeforeCommitNonce(account string, commitNonce uint64) error {
@@ -1015,6 +1087,11 @@ func (p *txPoolImpl[T, Constraint]) cleanTxsByAccount(account string, list *txSo
 	if failed.Load() {
 		return errors.New("failed to remove txs")
 	}
+
+	if len(list.items) == 0 {
+		list.setEmpty()
+	}
+
 	return nil
 }
 
@@ -1042,7 +1119,7 @@ func (p *txPoolImpl[T, Constraint]) RemoveStateUpdatingTxs(txHashList []string) 
 	p.postEvent(ev)
 }
 
-func (p *txPoolImpl[T, Constraint]) handleRemoveStateUpdatingTxs(txHashList []string) {
+func (p *txPoolImpl[T, Constraint]) handleRemoveStateUpdatingTxs(txHashList []string) int {
 	p.logger.Infof("start RemoveStateUpdatingTxs, len:%d", len(txHashList))
 	removeCount := 0
 	dirtyAccounts := make(map[string]bool)
@@ -1089,7 +1166,11 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveStateUpdatingTxs(txHashList []st
 		p.logger.Debugf("Account %s update its pendingNonce to %d by commitNonce", account, pendingNonce)
 	}
 
-	p.logger.Infof("finish RemoveStateUpdatingTxs, len:%d, removeCount:%d", len(txHashList), removeCount)
+	if removeCount > 0 {
+		p.logger.Infof("finish RemoveStateUpdatingTxs, len:%d, removeCount:%d", len(txHashList), removeCount)
+		traceRemovedTx("RemoveStateUpdatingTxs", removeCount)
+	}
+	return removeCount
 }
 
 // GetRequestsByHashList returns the transaction list corresponding to the given hash list.
@@ -1482,9 +1563,10 @@ func (p *txPoolImpl[T, Constraint]) handleRestorePool() {
 }
 
 // FilterOutOfDateRequests get the remained local txs in TTLIndex and broadcast to other vp peers by tolerance time.
-func (p *txPoolImpl[T, Constraint]) FilterOutOfDateRequests() []*T {
+func (p *txPoolImpl[T, Constraint]) FilterOutOfDateRequests(timeout bool) []*T {
 	req := &reqFilterReBroadcastTxs[T, Constraint]{
-		respCh: make(chan []*T),
+		timeout: timeout,
+		respCh:  make(chan []*T),
 	}
 	ev := &consensusEvent{
 		EventType: FilterReBroadcastTxsEvent,
@@ -1494,7 +1576,7 @@ func (p *txPoolImpl[T, Constraint]) FilterOutOfDateRequests() []*T {
 	return <-req.respCh
 }
 
-func (p *txPoolImpl[T, Constraint]) handleFilterOutOfDateRequests() []*T {
+func (p *txPoolImpl[T, Constraint]) handleFilterOutOfDateRequests(timeout bool) []*T {
 	now := time.Now().UnixNano()
 	var forward []*internalTransaction[T, Constraint]
 	p.txStore.localTTLIndex.data.Ascend(func(a btree.Item) bool {
@@ -1504,7 +1586,8 @@ func (p *txPoolImpl[T, Constraint]) handleFilterOutOfDateRequests() []*T {
 			p.logger.Error("Get nil poolTx from txStore")
 			return true
 		}
-		if now-poolTx.lifeTime > p.toleranceTime.Nanoseconds() {
+
+		if !timeout || now-poolTx.lifeTime > p.toleranceTime.Nanoseconds() {
 			// for those batched txs, we don't need to forward temporarily.
 			if _, ok := p.txStore.batchedTxs[txPointer{account: orderedKey.account, nonce: orderedKey.nonce}]; !ok {
 				forward = append(forward, poolTx)
@@ -1535,7 +1618,7 @@ func (p *txPoolImpl[T, Constraint]) fillRemoveTxs(orderedKey *orderedIndexKey, p
 	removedTxs[orderedKey.account] = append(removedTxs[orderedKey.account], poolTx)
 }
 
-func (p *txPoolImpl[T, Constraint]) removeTxsByAccount(account string, nonce uint64) (uint64, error) {
+func (p *txPoolImpl[T, Constraint]) removeTxsByAccount(account string, nonce uint64) (int, error) {
 	var removeTxs []*internalTransaction[T, Constraint]
 	if list, ok := p.txStore.allTxs[account]; ok {
 		removeTxs = list.behind(nonce)
@@ -1552,7 +1635,7 @@ func (p *txPoolImpl[T, Constraint]) removeTxsByAccount(account string, nonce uin
 		}
 	}
 
-	return uint64(len(removeTxs)), nil
+	return len(removeTxs), nil
 }
 
 // =============================================================================

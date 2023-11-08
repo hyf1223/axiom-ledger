@@ -150,6 +150,7 @@ func AriesConfig() *Config {
 					AbnormalNodeExcludeView:              1,
 					AgainProposeIntervalBlock:            0,
 					ContinuousNullRequestToleranceNumber: 3,
+					ReBroadcastToleranceNumber:           2,
 				},
 				CandidateSet: []rbft.NodeInfo{},
 				ValidatorSet: []rbft.NodeInfo{
@@ -241,9 +242,11 @@ func AriesConsensusConfig() *ConsensusConfig {
 			Burst:  10000,
 		},
 		TxPool: TxPool{
-			PoolSize:            50000,
-			ToleranceTime:       Duration(5 * time.Minute),
-			ToleranceRemoveTime: Duration(15 * time.Minute),
+			PoolSize:              50000,
+			ToleranceTime:         Duration(5 * time.Minute),
+			ToleranceRemoveTime:   Duration(15 * time.Minute),
+			CleanEmptyAccountTime: Duration(10 * time.Minute),
+			ToleranceNonceGap:     1000,
 		},
 		TxCache: TxCache{
 			SetSize:    50,

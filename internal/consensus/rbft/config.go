@@ -95,6 +95,9 @@ func generateRbftConfig(config *common.Config) (rbft.Config, error) {
 	if readConfig.Rbft.Timeout.BatchTimeout > 0 {
 		defaultConfig.BatchTimeout = readConfig.Rbft.Timeout.BatchTimeout.ToDuration()
 	}
+	if readConfig.TxPool.ToleranceTime > 0 {
+		defaultConfig.CheckPoolTimeout = readConfig.TxPool.ToleranceTime.ToDuration()
+	}
 	if readConfig.Rbft.EnableMetrics {
 		defaultConfig.MetricsProv = &prometheus.Provider{
 			Name: "rbft",

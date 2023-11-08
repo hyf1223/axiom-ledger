@@ -23,7 +23,7 @@ func NewMockMinimalTxPool[T any, Constraint types.TXConstraint[T]](ctrl *gomock.
 	mock.EXPECT().GetRequestsByHashList(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil, nil, nil).AnyTimes()
 	mock.EXPECT().SendMissingRequests(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	mock.EXPECT().ReceiveMissingRequests(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	mock.EXPECT().FilterOutOfDateRequests().Return(nil).AnyTimes()
+	mock.EXPECT().FilterOutOfDateRequests(gomock.Any()).Return(nil).AnyTimes()
 	mock.EXPECT().RestorePool().Return().AnyTimes()
 	mock.EXPECT().ReConstructBatchByOrder(gomock.Any()).Return(nil, nil).AnyTimes()
 	mock.EXPECT().Stop().AnyTimes()

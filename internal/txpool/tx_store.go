@@ -2,6 +2,7 @@ package txpool
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/btree"
 	"github.com/sirupsen/logrus"
@@ -103,6 +104,10 @@ func (txStore *transactionStore[T, Constraint]) insertTxs(txItems map[string][]*
 			txList = txStore.allTxs[account]
 			txList.items[txItem.getNonce()] = txItem
 			txList.index.insertBySortedNonceKey(txItem.getNonce())
+			// if the account is empty, we need to set the empty flag to false because we insert a new tx
+			if txList.isEmpty() {
+				txList.setNotEmpty()
+			}
 			if isLocal {
 				txStore.localTTLIndex.insertByOrderedQueueKey(txItem)
 			}
@@ -124,10 +129,10 @@ func (txStore *transactionStore[T, Constraint]) getPoolTxByTxnPointer(account st
 
 // todo: gc the empty account in txpool(delete key)
 type txSortedMap[T any, Constraint types.TXConstraint[T]] struct {
-	items map[uint64]*internalTransaction[T, Constraint] // map nonce to transaction
-	index *btreeIndex[T, Constraint]                     // index for items' nonce
-	//empty     bool
-	//emptyTime int64
+	items     map[uint64]*internalTransaction[T, Constraint] // map nonce to transaction
+	index     *btreeIndex[T, Constraint]                     // index for items' nonce
+	empty     bool                                           // whether the account is empty in pool
+	emptyTime int64                                          // the latest timestamp when the account is empty
 }
 
 func newTxSortedMap[T any, Constraint types.TXConstraint[T]]() *txSortedMap[T, Constraint] {
@@ -135,6 +140,27 @@ func newTxSortedMap[T any, Constraint types.TXConstraint[T]]() *txSortedMap[T, C
 		items: make(map[uint64]*internalTransaction[T, Constraint]),
 		index: newBtreeIndex[T, Constraint](SortNonce),
 	}
+}
+
+func (m *txSortedMap[T, Constraint]) setEmpty() {
+	m.empty = true
+	m.emptyTime = time.Now().UnixNano()
+}
+
+func (m *txSortedMap[T, Constraint]) getEmptyTime() int64 {
+	return m.emptyTime
+}
+
+func (m *txSortedMap[T, Constraint]) setNotEmpty() {
+	m.empty = false
+}
+
+func (m *txSortedMap[T, Constraint]) isEmpty() bool {
+	return m.empty
+}
+
+func (m *txSortedMap[T, Constraint]) checkIfGc(now, cleanTimeout int64) bool {
+	return m.isEmpty() && now-m.getEmptyTime() > cleanTimeout
 }
 
 func (m *txSortedMap[T, Constraint]) filterReady(demandNonce uint64) ([]*internalTransaction[T, Constraint], []*internalTransaction[T, Constraint], uint64) {

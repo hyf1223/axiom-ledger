@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	Batch     TimeoutEvent = "Batch"
-	NoTxBatch TimeoutEvent = "NoTxBatch"
-	RemoveTx  TimeoutEvent = "RemoveTx"
+	Batch             TimeoutEvent = "Batch"
+	NoTxBatch         TimeoutEvent = "NoTxBatch"
+	RemoveTx          TimeoutEvent = "RemoveTx"
+	CleanEmptyAccount TimeoutEvent = "CleanEmptyAccount"
 )
 
 type TimeoutEvent string

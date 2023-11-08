@@ -9,11 +9,12 @@ import (
 
 // nolint
 const (
-	DefaultPoolSize            = 50000
-	DefaultBatchSize           = 500
-	DefaultToleranceNonceGap   = 1000
-	DefaultToleranceTime       = 5 * time.Minute
-	DefaultToleranceRemoveTime = 15 * time.Minute
+	DefaultPoolSize              = 50000
+	DefaultBatchSize             = 500
+	DefaultToleranceNonceGap     = 1000
+	DefaultToleranceTime         = 5 * time.Minute
+	DefaultToleranceRemoveTime   = 15 * time.Minute
+	DefaultCleanEmptyAccountTime = 10 * time.Minute
 
 	maxChanSize = 1024
 )
@@ -189,7 +190,8 @@ type respSendMissingTxs[T any, Constraint types.TXConstraint[T]] struct {
 	err  error
 }
 type reqFilterReBroadcastTxs[T any, Constraint types.TXConstraint[T]] struct {
-	respCh chan []*T
+	timeout bool
+	respCh  chan []*T
 }
 
 type reqRestoreOneBatch struct {
@@ -243,4 +245,18 @@ type reqAccountPoolMetaMsg[T any, Constraint types.TXConstraint[T]] struct {
 type reqPoolMetaMsg[T any, Constraint types.TXConstraint[T]] struct {
 	full bool
 	ch   chan *txpool.Meta[T, Constraint]
+}
+
+// =========================localEvent===============================
+const (
+	gcAccountEvent = iota
+)
+
+var localEventToStr = map[int]string{
+	gcAccountEvent: "gcAccountEvent",
+}
+
+type localEvent struct {
+	EventType int
+	Event     any
 }
