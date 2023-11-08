@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
+	"github.com/axiomesh/axiom-ledger/pkg/txpool/mock_txpool"
+
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-bft/common/consensus"
 	"github.com/axiomesh/axiom-kit/types"
@@ -154,6 +156,9 @@ func MockConsensusConfig(logger logrus.FieldLogger, ctrl *gomock.Controller, t *
 
 	mockBlockSync := MockMiniBlockSync(ctrl)
 	conf.BlockSync = mockBlockSync
+
+	mockTxpool := mock_txpool.NewMockTxPool[types.Transaction, *types.Transaction](ctrl)
+	conf.TxPool = mockTxpool
 
 	return conf
 }

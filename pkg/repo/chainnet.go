@@ -241,7 +241,6 @@ func AriesConsensusConfig() *ConsensusConfig {
 		},
 		TxPool: TxPool{
 			PoolSize:            50000,
-			BatchTimeout:        Duration(500 * time.Millisecond),
 			ToleranceTime:       Duration(5 * time.Minute),
 			ToleranceRemoveTime: Duration(15 * time.Minute),
 		},
@@ -263,9 +262,11 @@ func AriesConsensusConfig() *ConsensusConfig {
 				SyncStateRestart: Duration(10 * time.Minute),
 				FetchCheckpoint:  Duration(5 * time.Second),
 				FetchView:        Duration(1 * time.Second),
+				BatchTimeout:     Duration(500 * time.Millisecond),
 			},
 		},
 		Solo: Solo{
+			BatchTimeout:     Duration(500 * time.Millisecond),
 			CheckpointPeriod: 10,
 		},
 	}

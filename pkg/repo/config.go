@@ -469,7 +469,7 @@ func DefaultConfig(epochEnable bool) *Config {
 				BlockSync:  "info",
 				APP:        "info",
 				Access:     "info",
-				TxPool:     "info",
+				TxPool:     "debug",
 				Epoch:      "info",
 			},
 		},

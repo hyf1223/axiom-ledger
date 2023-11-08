@@ -12,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/sirupsen/logrus"
 
+	"github.com/axiomesh/axiom-ledger/pkg/txpool"
+
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-kit/log"
 	"github.com/axiomesh/axiom-kit/types"
@@ -39,6 +41,7 @@ type AxiomLedger struct {
 	ViewLedger    *ledger.Ledger
 	BlockExecutor executor.Executor
 	Consensus     consensus.Consensus
+	TxPool        txpool.TxPool[types.Transaction, *types.Transaction]
 	Network       network.Network
 	Sync          block_sync.Sync
 	Monitor       *profile.Monitor
@@ -56,8 +59,32 @@ func NewAxiomLedger(rep *repo.Repo, ctx context.Context, cancel context.CancelFu
 	chainMeta := axm.ViewLedger.ChainLedger.GetChainMeta()
 
 	if !rep.ReadonlyMode {
+		// new txpool
+		poolConf := rep.ConsensusConfig.TxPool
+		getNonceFn := func(address *types.Address) uint64 {
+			return axm.ViewLedger.NewView().StateLedger.GetNonce(address)
+		}
+		fn := func(addr string) uint64 {
+			return getNonceFn(types.NewAddressByStr(addr))
+		}
+		txpoolConf := txpool.Config{
+			Logger:              loggers.Logger(loggers.TxPool),
+			BatchSize:           rep.EpochInfo.ConsensusParams.BlockMaxTxNum,
+			PoolSize:            poolConf.PoolSize,
+			ToleranceTime:       poolConf.ToleranceTime.ToDuration(),
+			ToleranceRemoveTime: poolConf.ToleranceRemoveTime.ToDuration(),
+			ToleranceNonceGap:   poolConf.ToleranceNonceGap,
+			GetAccountNonce:     fn,
+			IsTimed:             rep.EpochInfo.ConsensusParams.EnableTimedGenEmptyBlock,
+		}
+		axm.TxPool, err = txpool.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
+		if err != nil {
+			return nil, fmt.Errorf("new txpool failed: %w", err)
+		}
+		// new consensus
 		axm.Consensus, err = consensus.New(
 			rep.Config.Consensus.Type,
+			common.WithTxPool(axm.TxPool),
 			common.WithConfig(rep.RepoRoot, rep.ConsensusConfig),
 			common.WithSelfAccountAddress(rep.AccountAddress),
 			common.WithGenesisEpochInfo(rep.Config.Genesis.EpochInfo.Clone()),
