@@ -57,6 +57,10 @@ prepare:
 	${GO_BIN} install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 	${GO_BIN} install github.com/fsgo/go_fmt/cmd/gorgeous@latest
 
+## make generate-mock: Run go generate
+generate-mock:
+	${GO_BIN} generate ./...
+
 ## make linter: Run golanci-lint
 linter:
 	golangci-lint run --timeout=5m --new-from-rev=HEAD~1 -v
@@ -66,18 +70,16 @@ fmt:
 	gorgeous -local github.com/axiomesh -mi
 
 ## make test: Run go unittest
-test: prepare
-	${GO_BIN} generate ./...
+test:
 	${GO_BIN} test -timeout 300s ./... -count=1
 
 ## make test-coverage: Test project with cover
-test-coverage: prepare
-	${GO_BIN} generate ./...
+test-coverage:
 	${GO_BIN} test -timeout 300s -short -coverprofile cover.out -covermode=atomic ${COVERAGE_TEST_PKGS}
 	cat cover.out | grep -v "pb.go" >> coverage.txt
 
 ## make smoke-test: Run smoke test
-smoke-test: prepare
+smoke-test:
 	cd scripts && bash smoke_test.sh -b ${BRANCH}
 
 ## make build: Go build the project

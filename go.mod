@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/Rican7/retry v0.3.1
 	github.com/VictoriaMetrics/fastcache v1.12.1
-	github.com/axiomesh/axiom-bft v0.0.3-0.20231113013645-87a233bdf849
+	github.com/axiomesh/axiom-bft v0.0.3-0.20231113073739-ab4b05455a26
 	github.com/axiomesh/axiom-kit v0.0.3-0.20231110100204-1c32df2ed9fe
 	github.com/axiomesh/axiom-p2p v0.0.3-0.20231106074847-3915bda35e1c
 	github.com/axiomesh/eth-kit v0.0.3-0.20231009042227-264fda908a53
