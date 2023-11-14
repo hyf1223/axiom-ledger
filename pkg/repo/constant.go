@@ -28,6 +28,9 @@ const (
 	ConsensusTypeRbft    = "rbft"
 	ConsensusTypeSoloDev = "solo_dev"
 
+	ConsensusStorageTypeMinifile = "minifile"
+	ConsensusStorageTypeRosedb   = "rosedb"
+
 	KVStorageTypeLeveldb = "leveldb"
 	KVStorageTypePebble  = "pebble"
 	KVStorageCacheSize   = 16
