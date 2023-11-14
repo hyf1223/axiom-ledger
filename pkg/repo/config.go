@@ -189,6 +189,7 @@ type Genesis struct {
 	InitWhiteListProviders []string        `mapstructure:"init_white_list_providers" toml:"init_white_list_providers"`
 	Accounts               []string        `mapstructure:"accounts" toml:"accounts"`
 	EpochInfo              *rbft.EpochInfo `mapstructure:"epoch_info" toml:"epoch_info"`
+	Nodes                  []*Node         `mapstructure:"nodes" toml:"nodes"`
 }
 
 type Access struct {
@@ -199,6 +200,13 @@ type Admin struct {
 	Address string `mapstructure:"address" toml:"address"`
 	Weight  uint64 `mapstructure:"weight" toml:"weight"`
 	Name    string `mapstructure:"name" toml:"name"`
+}
+
+type Node struct {
+	Name    string `mapstructure:"name" toml:"name"`
+	NodeId  string `mapstructure:"node_id" toml:"node_id"`
+	Address string `mapstructure:"address" toml:"address"`
+	ID      uint64 `mapstructure:"id" toml:"id"`
 }
 
 type Sync struct {
@@ -408,7 +416,15 @@ func DefaultConfig(epochEnable bool) *Config {
 				return &Admin{
 					Address: item,
 					Weight:  1,
+					Name:    DefaultAdminNames[idx],
+				}
+			}),
+			Nodes: lo.Map(DefaultNodeAddrs[0:4], func(item string, idx int) *Node {
+				return &Node{
 					Name:    DefaultNodeNames[idx],
+					NodeId:  defaultNodeIDs[idx],
+					Address: DefaultNodeAddrs[idx],
+					ID:      uint64(idx + 1),
 				}
 			}),
 			InitWhiteListProviders: DefaultNodeAddrs,
