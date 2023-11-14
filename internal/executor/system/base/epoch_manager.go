@@ -275,7 +275,11 @@ func TurnIntoNewEpoch(electValidatorsByWrfSeed []byte, lg ledger.StateLedger) (*
 		if err := e.Unmarshal(data); err != nil {
 			return nil, err
 		}
-		if err := e.ElectValidators(electValidatorsByWrfSeed); err != nil {
+		lastEpochInfo, err := GetEpochInfo(lg, e.Epoch-1)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.ElectValidators(lastEpochInfo, electValidatorsByWrfSeed); err != nil {
 			return nil, err
 		}
 		validatorIDs := lo.Map(e.ValidatorSet, func(item rbft.NodeInfo, index int) uint64 {
