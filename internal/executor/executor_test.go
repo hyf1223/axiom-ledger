@@ -459,9 +459,12 @@ func TestBlockExecutor_ApplyReadonlyTransactions(t *testing.T) {
 		},
 	}, "1000000")
 	assert.Nil(t, err)
-	err = governance.InitNodeMembers(stateLedger, []*governance.NodeMember{
+	err = governance.InitNodeMembers(stateLedger, []*repo.Node{
 		{
-			NodeId: "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			Name:    "S2luZw==",
+			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			Address: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
+			ID:      1,
 		},
 	})
 	assert.Nil(t, err)
@@ -579,9 +582,12 @@ func TestBlockExecutor_ApplyReadonlyTransactionsWithError(t *testing.T) {
 		},
 	}, "1000000")
 	assert.Nil(t, err)
-	err = governance.InitNodeMembers(stateLedger, []*governance.NodeMember{
+	err = governance.InitNodeMembers(stateLedger, []*repo.Node{
 		{
-			NodeId: "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			Name:    "S2luZw==",
+			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			Address: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
+			ID:      1,
 		},
 	})
 	assert.Nil(t, err)

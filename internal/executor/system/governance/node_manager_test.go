@@ -56,7 +56,7 @@ func TestNodeManager_RunForPropose(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -293,7 +293,7 @@ func TestNodeManager_RunForNodeUpgradePropose(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -382,7 +382,7 @@ func TestNodeManager_GetNodeMembers(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -432,7 +432,7 @@ func TestNodeManager_RunForAddVote(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -553,7 +553,7 @@ func TestNodeManager_RunForAddVote_Approved(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -647,7 +647,7 @@ func TestNodeManager_RunForRemoveVote_Approved(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAkwmNbfH8ZBdnYhygUHyG5mSWrWTEra3gwHWt9dGTUSRVV",
 			Address: admin1,
@@ -748,7 +748,7 @@ func TestNodeManager_RunForRemoveVote(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -860,7 +860,7 @@ func TestNodeManager_RunForUpgradeVote(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,
@@ -1009,7 +1009,7 @@ func TestNodeManager_GetProposal(t *testing.T) {
 		},
 	}, "10")
 	assert.Nil(t, err)
-	err = InitNodeMembers(stateLedger, []*NodeMember{
+	err = InitNodeMembers(stateLedger, []*repo.Node{
 		{
 			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
 			Address: admin1,

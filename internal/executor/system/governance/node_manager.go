@@ -13,6 +13,7 @@ import (
 	"github.com/axiomesh/axiom-ledger/internal/executor/system/base"
 	"github.com/axiomesh/axiom-ledger/internal/executor/system/common"
 	"github.com/axiomesh/axiom-ledger/internal/ledger"
+	"github.com/axiomesh/axiom-ledger/pkg/repo"
 	vm "github.com/axiomesh/eth-kit/evm"
 )
 
@@ -496,7 +497,7 @@ func (nm *NodeManager) checkAndUpdateState(lastHeight uint64) {
 	}
 }
 
-func InitNodeMembers(lg ledger.StateLedger, members []*NodeMember) error {
+func InitNodeMembers(lg ledger.StateLedger, members []*repo.Node) error {
 	// read member config, write to ViewLedger
 	c, err := json.Marshal(members)
 	if err != nil {
