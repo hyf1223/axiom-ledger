@@ -5,7 +5,7 @@ import (
 	"crypto/ecdsa"
 
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/rosedblabs/rosedb/v2"
+	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 
@@ -29,7 +29,7 @@ var _ rbft.EpochService = (*RBFTAdaptor)(nil)
 
 type RBFTAdaptor struct {
 	epochStore        storage.Storage
-	store             *rosedb.DB
+	store             rbft.Storage
 	priv              *ecdsa.PrivateKey
 	network           network.Network
 	msgPipes          map[int32]p2p.Pipe
@@ -64,21 +64,21 @@ type Ready struct {
 }
 
 func NewRBFTAdaptor(config *common.Config) (*RBFTAdaptor, error) {
-	options := rosedb.DefaultOptions
-	options.DirPath = repo.GetStoragePath(config.RepoRoot, storagemgr.Consensus)
-	options.Sync = false
-	options.BlockCache = 50 * 1024 * 1024
-	options.SegmentSize = 50 * 1024 * 1024
-	store, err := rosedb.Open(options)
+	epochStore, err := storagemgr.Open(repo.GetStoragePath(config.RepoRoot, storagemgr.Epoch))
 	if err != nil {
 		return nil, err
 	}
-	// merge log files
-	if err := store.Merge(true); err != nil {
-		return nil, err
-	}
 
-	epochStore, err := storagemgr.Open(repo.GetStoragePath(config.RepoRoot, storagemgr.Epoch))
+	storePath := repo.GetStoragePath(config.RepoRoot, storagemgr.Consensus)
+	var store rbft.Storage
+	switch config.ConsensusStorageType {
+	case repo.ConsensusStorageTypeMinifile:
+		store, err = OpenMinifile(storePath)
+	case repo.ConsensusStorageTypeRosedb:
+		store, err = OpenRosedb(storePath)
+	default:
+		return nil, errors.Errorf("unsupported consensus storage type: %s", config.ConsensusStorageType)
+	}
 	if err != nil {
 		return nil, err
 	}

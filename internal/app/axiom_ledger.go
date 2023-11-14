@@ -62,6 +62,7 @@ func NewAxiomLedger(rep *repo.Repo, ctx context.Context, cancel context.CancelFu
 			common.WithSelfAccountAddress(rep.AccountAddress),
 			common.WithGenesisEpochInfo(rep.Config.Genesis.EpochInfo.Clone()),
 			common.WithConsensusType(rep.Config.Consensus.Type),
+			common.WithConsensusStorageType(rep.Config.Consensus.StorageType),
 			common.WithPrivKey(rep.AccountKey),
 			common.WithNetwork(axm.Network),
 			common.WithLogger(loggers.Logger(loggers.Consensus)),

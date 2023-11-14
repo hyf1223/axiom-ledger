@@ -42,6 +42,29 @@ func mockAdaptor(ctrl *gomock.Controller, t *testing.T) *RBFTAdaptor {
 	return stack
 }
 
+func mockAdaptorWithStorageType(ctrl *gomock.Controller, t *testing.T, typ string) *RBFTAdaptor {
+	err := storagemgr.Initialize(repo.KVStorageTypeLeveldb, repo.KVStorageCacheSize, repo.KVStorageSync)
+	assert.Nil(t, err)
+	logger := log.NewWithModule("consensus")
+	cfg := testutil.MockConsensusConfig(logger, ctrl, t)
+	cfg.ConsensusStorageType = typ
+	stack, err := NewRBFTAdaptor(cfg)
+	assert.Nil(t, err)
+
+	consensusMsgPipes := make(map[int32]network.Pipe, len(consensus.Type_name))
+	for id, name := range consensus.Type_name {
+		msgPipe, err := stack.config.Network.CreatePipe(context.Background(), "test_pipe_"+name)
+		assert.Nil(t, err)
+		consensusMsgPipes[id] = msgPipe
+	}
+	globalMsgPipe, err := stack.config.Network.CreatePipe(context.Background(), "test_pipe_global")
+	assert.Nil(t, err)
+	stack.SetMsgPipes(consensusMsgPipes, globalMsgPipe)
+	err = stack.UpdateEpoch()
+	assert.Nil(t, err)
+	return stack
+}
+
 func TestSignAndVerify(t *testing.T) {
 	ast := assert.New(t)
 	ctrl := gomock.NewController(t)
