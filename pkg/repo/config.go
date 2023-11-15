@@ -217,7 +217,8 @@ type Sync struct {
 }
 
 type Consensus struct {
-	Type string `mapstructure:"type" toml:"type"`
+	Type        string `mapstructure:"type" toml:"type"`
+	StorageType string `mapstructure:"storage_type" toml:"storage_type"`
 }
 
 type Storage struct {
@@ -389,7 +390,8 @@ func DefaultConfig(epochEnable bool) *Config {
 			ConcurrencyLimit:      1000,
 		},
 		Consensus: Consensus{
-			Type: ConsensusTypeRbft,
+			Type:        ConsensusTypeRbft,
+			StorageType: ConsensusStorageTypeMinifile,
 		},
 		Storage: Storage{
 			KvType:      KVStorageTypePebble,
