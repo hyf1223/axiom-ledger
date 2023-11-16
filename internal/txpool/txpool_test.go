@@ -12,6 +12,7 @@ import (
 	"github.com/axiomesh/axiom-ledger/internal/components/timer"
 
 	log2 "github.com/axiomesh/axiom-kit/log"
+	"github.com/axiomesh/axiom-kit/txpool"
 
 	"github.com/axiomesh/axiom-kit/types"
 )
@@ -530,7 +531,7 @@ func TestTxPoolImpl_ReceiveMissingRequests(t *testing.T) {
 			txHashList[index] = tx.RbftGetTxHash()
 			txsM[uint64(index)] = tx
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -583,7 +584,7 @@ func TestTxPoolImpl_ReceiveMissingRequests(t *testing.T) {
 			txHashList[index] = tx.RbftGetTxHash()
 			txsM[uint64(index)] = tx
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -608,7 +609,7 @@ func TestTxPoolImpl_ReceiveMissingRequests(t *testing.T) {
 			txsM[uint64(index)] = tx
 			missingHashList[uint64(index)] = tx.RbftGetTxHash()
 		})
-		newBatch = &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch = &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -658,7 +659,7 @@ func TestTxPoolImpl_ReceiveMissingRequests(t *testing.T) {
 			txsM[uint64(index)] = tx
 			missingHashList[uint64(index)] = tx.RbftGetTxHash()
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -709,7 +710,7 @@ func TestTxPoolImpl_ReceiveMissingRequests(t *testing.T) {
 			txsM[uint64(index)] = tx
 			missingHashList[uint64(index)] = tx.RbftGetTxHash()
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -763,7 +764,7 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		err = pool.AddLocalTx(tx1)
 		ast.Nil(err)
 		typ := <-ch
-		ast.Equal(GenBatchSizeEvent, typ)
+		ast.Equal(txpool.GenBatchSizeEvent, typ)
 		batch, err := pool.GenerateRequestBatch(typ)
 		ast.Nil(err)
 		ast.NotNil(batch)
@@ -782,9 +783,9 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		ast.Nil(err)
 		txs := constructTxs(s, 3)
 		pool.AddRemoteTxs(txs)
-		batch, err := pool.GenerateRequestBatch(GenBatchSizeEvent)
-		ast.Nil(err)
-		ast.Nil(batch)
+		_, err = pool.GenerateRequestBatch(txpool.GenBatchSizeEvent)
+		ast.NotNil(err)
+		ast.Contains(err.Error(), "ignore generate batch")
 	})
 
 	t.Run("generate batch timeout event", func(t *testing.T) {
@@ -802,9 +803,9 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		ast.Nil(err)
 
 		batchTimer := timer.NewTimerManager(pool.logger)
-		ch := make(chan *RequestHashBatch[types.Transaction, *types.Transaction], 1)
+		ch := make(chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction], 1)
 		handler := func(name timer.TimeoutEvent) {
-			batch, err := pool.generateRequestBatch(GenBatchTimeoutEvent)
+			batch, err := pool.generateRequestBatch(txpool.GenBatchTimeoutEvent)
 			ast.Nil(err)
 			ch <- batch
 		}
@@ -828,10 +829,11 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		defer pool.Stop()
 
 		batchTimer := timer.NewTimerManager(pool.logger)
-		ch := make(chan *RequestHashBatch[types.Transaction, *types.Transaction], 1)
+		ch := make(chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction], 1)
 		handler := func(name timer.TimeoutEvent) {
-			batch, err := pool.generateRequestBatch(GenBatchTimeoutEvent)
-			ast.Nil(err)
+			batch, err := pool.generateRequestBatch(txpool.GenBatchTimeoutEvent)
+			ast.NotNil(err)
+			ast.Contains(err.Error(), "there is no pending tx, ignore generate batch")
 			ch <- batch
 		}
 		err = batchTimer.CreateTimer(timer.Batch, 1*time.Millisecond, handler)
@@ -858,8 +860,9 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		err = pool.AddLocalTx(tx)
 		ast.Nil(err)
 
-		batch, err := pool.GenerateRequestBatch(GenBatchNoTxTimeoutEvent)
-		ast.Nil(err)
+		batch, err := pool.GenerateRequestBatch(txpool.GenBatchNoTxTimeoutEvent)
+		ast.NotNil(err)
+		ast.Contains(err.Error(), "there is pending tx, ignore generate no tx batch")
 		ast.Nil(batch)
 	})
 
@@ -871,7 +874,7 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		ast.Nil(err)
 		defer pool.Stop()
 
-		_, err = pool.GenerateRequestBatch(GenBatchNoTxTimeoutEvent)
+		_, err = pool.GenerateRequestBatch(txpool.GenBatchNoTxTimeoutEvent)
 		ast.NotNil(err)
 		ast.Contains(err.Error(), "not supported generate no tx batch")
 	})
@@ -886,9 +889,9 @@ func TestTxPoolImpl_GenerateRequestBatch(t *testing.T) {
 		defer pool.Stop()
 
 		noTxBatchTimer := timer.NewTimerManager(pool.logger)
-		ch := make(chan *RequestHashBatch[types.Transaction, *types.Transaction], 1)
+		ch := make(chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction], 1)
 		handler := func(name timer.TimeoutEvent) {
-			batch, err := pool.generateRequestBatch(GenBatchNoTxTimeoutEvent)
+			batch, err := pool.generateRequestBatch(txpool.GenBatchNoTxTimeoutEvent)
 			ast.Nil(err)
 			ch <- batch
 		}
@@ -921,7 +924,7 @@ func TestTxPoolImpl_ReConstructBatchByOrder(t *testing.T) {
 		txHashList[index] = tx.RbftGetTxHash()
 		txsM[uint64(index)] = tx
 	})
-	newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+	newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 		TxList:     txs,
 		LocalList:  []bool{true, true, true, true},
 		TxHashList: txHashList,
@@ -938,7 +941,7 @@ func TestTxPoolImpl_ReConstructBatchByOrder(t *testing.T) {
 	ast.Contains(err.Error(), "batch already exist")
 	ast.Equal(0, len(duHash))
 
-	illegalBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+	illegalBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 		TxList:     txs,
 		LocalList:  []bool{true, true, true, true},
 		TxHashList: nil,
@@ -969,7 +972,7 @@ func TestTxPoolImpl_ReConstructBatchByOrder(t *testing.T) {
 	ast.NotNil(err)
 	ast.Contains(err.Error(), "batch hash does not match")
 
-	pool.txStore.batchesCache = make(map[string]*RequestHashBatch[types.Transaction, *types.Transaction])
+	pool.txStore.batchesCache = make(map[string]*txpool.RequestHashBatch[types.Transaction, *types.Transaction])
 	duTxs := txs[:2]
 	pointer0 := &txPointer{
 		account: duTxs[0].RbftGetFrom(),
@@ -1009,7 +1012,7 @@ func TestTxPoolImpl_GetRequestsByHashList(t *testing.T) {
 			txHashList[index] = tx.RbftGetTxHash()
 			txsM[uint64(index)] = tx
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -1026,7 +1029,7 @@ func TestTxPoolImpl_GetRequestsByHashList(t *testing.T) {
 		ast.Equal(4, len(localList))
 		ast.Equal(0, len(missingTxsHash))
 
-		pool.txStore.batchesCache = make(map[string]*RequestHashBatch[types.Transaction, *types.Transaction])
+		pool.txStore.batchesCache = make(map[string]*txpool.RequestHashBatch[types.Transaction, *types.Transaction])
 		expectMissingTxsHash := make(map[uint64]string)
 		expectMissingTxsHash[0] = txs[0].RbftGetTxHash()
 		pool.txStore.missingBatch[batchDigest] = expectMissingTxsHash
@@ -1057,7 +1060,7 @@ func TestTxPoolImpl_GetRequestsByHashList(t *testing.T) {
 			txHashList[index] = tx.RbftGetTxHash()
 			txsM[uint64(index)] = tx
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -1093,7 +1096,7 @@ func TestTxPoolImpl_GetRequestsByHashList(t *testing.T) {
 			txHashList[index] = tx.RbftGetTxHash()
 			txsM[uint64(index)] = tx
 		})
-		newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+		newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 			TxList:     txs,
 			LocalList:  []bool{true, true, true, true},
 			TxHashList: txHashList,
@@ -1145,7 +1148,7 @@ func TestTxPoolImpl_SendMissingRequests(t *testing.T) {
 		txHashList[index] = tx.RbftGetTxHash()
 		txsM[uint64(index)] = tx
 	})
-	newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+	newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 		TxList:     txs,
 		LocalList:  []bool{true, true, true, true},
 		TxHashList: txHashList,
@@ -1231,7 +1234,7 @@ func TestTxPoolImpl_RestoreOneBatch(t *testing.T) {
 		txHashList[index] = tx.RbftGetTxHash()
 		txsM[uint64(index)] = tx
 	})
-	newBatch := &RequestHashBatch[types.Transaction, *types.Transaction]{
+	newBatch := &txpool.RequestHashBatch[types.Transaction, *types.Transaction]{
 		TxList:     txs,
 		LocalList:  []bool{true, true, true, true},
 		TxHashList: txHashList,
@@ -1262,7 +1265,7 @@ func TestTxPoolImpl_RestoreOneBatch(t *testing.T) {
 	ast.Contains(err.Error(), "can't find tx from batchedTxs")
 
 	ast.Equal(uint64(4), pool.txStore.priorityNonBatchSize)
-	_, err = pool.GenerateRequestBatch(GenBatchTimeoutEvent)
+	_, err = pool.GenerateRequestBatch(txpool.GenBatchTimeoutEvent)
 	ast.Nil(err)
 	ast.Equal(uint64(0), pool.txStore.priorityNonBatchSize)
 
@@ -1286,7 +1289,7 @@ func TestTxPoolImpl_RestorePool(t *testing.T) {
 	err = pool.AddLocalTx(tx3)
 	ast.Nil(err)
 
-	batch, err := pool.GenerateRequestBatch(GenBatchTimeoutEvent)
+	batch, err := pool.GenerateRequestBatch(txpool.GenBatchTimeoutEvent)
 	ast.Nil(err)
 	ast.Equal(4, len(batch.TxList))
 	ast.Equal(uint64(0), pool.txStore.priorityNonBatchSize)
@@ -1380,7 +1383,7 @@ func TestTxPoolImpl_RemoveBatches(t *testing.T) {
 	from := s.Addr.String()
 	txs := constructTxs(s, 4)
 	pool.AddRemoteTxs(txs)
-	batch, err := pool.GenerateRequestBatch(GenBatchTimeoutEvent)
+	batch, err := pool.GenerateRequestBatch(txpool.GenBatchTimeoutEvent)
 	ast.Nil(err)
 	ast.Equal(4, len(pool.txStore.txHashMap))
 	ast.Equal(4, len(batch.TxList))

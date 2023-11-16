@@ -7,9 +7,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/axiomesh/axiom-kit/txpool"
+
 	"github.com/axiomesh/axiom-kit/types"
 
-	"github.com/axiomesh/axiom-bft/common/consensus"
 	log2 "github.com/axiomesh/axiom-kit/log"
 )
 
@@ -22,11 +23,11 @@ const (
 var to = types.NewAddressByStr("0xa2f28344131970356c4a112d1e634e51589aa57c")
 
 // nolint
-func mockTxPoolImpl[T any, Constraint consensus.TXConstraint[T]](t *testing.T) *txPoolImpl[T, Constraint] {
+func mockTxPoolImpl[T any, Constraint types.TXConstraint[T]](t *testing.T) *txPoolImpl[T, Constraint] {
 	ast := assert.New(t)
 	pool, err := newTxPoolImpl[T, Constraint](NewMockTxPoolConfig())
 	ast.Nil(err)
-	conf := ConsensusConfig{
+	conf := txpool.ConsensusConfig{
 		SelfID: 1,
 		NotifyGenerateBatchFn: func(typ int) {
 			// do nothing

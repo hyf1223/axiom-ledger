@@ -12,24 +12,25 @@ package mock_txpool
 import (
 	reflect "reflect"
 
-	consensus "github.com/axiomesh/axiom-bft/common/consensus"
-	txpool "github.com/axiomesh/axiom-ledger/pkg/txpool"
 	gomock "go.uber.org/mock/gomock"
+
+	txpool "github.com/axiomesh/axiom-kit/txpool"
+	"github.com/axiomesh/axiom-kit/types"
 )
 
 // MockTxPool is a mock of TxPool interface.
-type MockTxPool[T any, Constraint consensus.TXConstraint[T]] struct {
+type MockTxPool[T any, Constraint types.TXConstraint[T]] struct {
 	ctrl     *gomock.Controller
 	recorder *MockTxPoolMockRecorder[T, Constraint]
 }
 
 // MockTxPoolMockRecorder is the mock recorder for MockTxPool.
-type MockTxPoolMockRecorder[T any, Constraint consensus.TXConstraint[T]] struct {
+type MockTxPoolMockRecorder[T any, Constraint types.TXConstraint[T]] struct {
 	mock *MockTxPool[T, Constraint]
 }
 
 // NewMockTxPool creates a new mock instance.
-func NewMockTxPool[T any, Constraint consensus.TXConstraint[T]](ctrl *gomock.Controller) *MockTxPool[T, Constraint] {
+func NewMockTxPool[T any, Constraint types.TXConstraint[T]](ctrl *gomock.Controller) *MockTxPool[T, Constraint] {
 	mock := &MockTxPool[T, Constraint]{ctrl: ctrl}
 	mock.recorder = &MockTxPoolMockRecorder[T, Constraint]{mock}
 	return mock
@@ -56,7 +57,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) AddLocalTx(tx any) *TxPoolAddLo
 }
 
 // TxPoolAddLocalTxCall wrap *gomock.Call
-type TxPoolAddLocalTxCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolAddLocalTxCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -92,7 +93,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) AddRemoteTxs(txs any) *TxPoolAd
 }
 
 // TxPoolAddRemoteTxsCall wrap *gomock.Call
-type TxPoolAddRemoteTxsCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolAddRemoteTxsCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -130,7 +131,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) FilterOutOfDateRequests() *TxPo
 }
 
 // TxPoolFilterOutOfDateRequestsCall wrap *gomock.Call
-type TxPoolFilterOutOfDateRequestsCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolFilterOutOfDateRequestsCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -169,7 +170,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GenerateRequestBatch(typ any) *
 }
 
 // TxPoolGenerateRequestBatchCall wrap *gomock.Call
-type TxPoolGenerateRequestBatchCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGenerateRequestBatchCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -207,7 +208,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetAccountMeta(account, full an
 }
 
 // TxPoolGetAccountMetaCall wrap *gomock.Call
-type TxPoolGetAccountMetaCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetAccountMetaCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -245,7 +246,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetMeta(full any) *TxPoolGetMet
 }
 
 // TxPoolGetMetaCall wrap *gomock.Call
-type TxPoolGetMetaCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetMetaCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -283,7 +284,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetPendingTxByHash(txHash any) 
 }
 
 // TxPoolGetPendingTxByHashCall wrap *gomock.Call
-type TxPoolGetPendingTxByHashCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetPendingTxByHashCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -321,7 +322,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetPendingTxCountByAccount(acco
 }
 
 // TxPoolGetPendingTxCountByAccountCall wrap *gomock.Call
-type TxPoolGetPendingTxCountByAccountCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetPendingTxCountByAccountCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -362,7 +363,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetRequestsByHashList(batchHash
 }
 
 // TxPoolGetRequestsByHashListCall wrap *gomock.Call
-type TxPoolGetRequestsByHashListCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetRequestsByHashListCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -400,7 +401,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) GetTotalPendingTxCount() *TxPoo
 }
 
 // TxPoolGetTotalPendingTxCountCall wrap *gomock.Call
-type TxPoolGetTotalPendingTxCountCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolGetTotalPendingTxCountCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -438,7 +439,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) HasPendingRequestInPool() *TxPo
 }
 
 // TxPoolHasPendingRequestInPoolCall wrap *gomock.Call
-type TxPoolHasPendingRequestInPoolCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolHasPendingRequestInPoolCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -474,7 +475,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) Init(config any) *TxPoolInitCal
 }
 
 // TxPoolInitCall wrap *gomock.Call
-type TxPoolInitCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolInitCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -512,7 +513,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) IsPoolFull() *TxPoolIsPoolFullC
 }
 
 // TxPoolIsPoolFullCall wrap *gomock.Call
-type TxPoolIsPoolFullCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolIsPoolFullCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -550,7 +551,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) PendingRequestsNumberIsReady() 
 }
 
 // TxPoolPendingRequestsNumberIsReadyCall wrap *gomock.Call
-type TxPoolPendingRequestsNumberIsReadyCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolPendingRequestsNumberIsReadyCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -589,7 +590,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) ReConstructBatchByOrder(oldBatc
 }
 
 // TxPoolReConstructBatchByOrderCall wrap *gomock.Call
-type TxPoolReConstructBatchByOrderCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolReConstructBatchByOrderCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -627,7 +628,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) ReceiveMissingRequests(batchHas
 }
 
 // TxPoolReceiveMissingRequestsCall wrap *gomock.Call
-type TxPoolReceiveMissingRequestsCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolReceiveMissingRequestsCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -663,7 +664,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) RemoveBatches(batchHashList any
 }
 
 // TxPoolRemoveBatchesCall wrap *gomock.Call
-type TxPoolRemoveBatchesCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolRemoveBatchesCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -699,7 +700,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) RemoveStateUpdatingTxs(txHashLi
 }
 
 // TxPoolRemoveStateUpdatingTxsCall wrap *gomock.Call
-type TxPoolRemoveStateUpdatingTxsCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolRemoveStateUpdatingTxsCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -737,7 +738,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) RestoreOneBatch(hash any) *TxPo
 }
 
 // TxPoolRestoreOneBatchCall wrap *gomock.Call
-type TxPoolRestoreOneBatchCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolRestoreOneBatchCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -773,7 +774,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) RestorePool() *TxPoolRestorePoo
 }
 
 // TxPoolRestorePoolCall wrap *gomock.Call
-type TxPoolRestorePoolCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolRestorePoolCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -812,7 +813,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) SendMissingRequests(batchHash, 
 }
 
 // TxPoolSendMissingRequestsCall wrap *gomock.Call
-type TxPoolSendMissingRequestsCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolSendMissingRequestsCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -850,7 +851,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) Start() *TxPoolStartCall[T, Con
 }
 
 // TxPoolStartCall wrap *gomock.Call
-type TxPoolStartCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolStartCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -886,7 +887,7 @@ func (mr *MockTxPoolMockRecorder[T, Constraint]) Stop() *TxPoolStopCall[T, Const
 }
 
 // TxPoolStopCall wrap *gomock.Call
-type TxPoolStopCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type TxPoolStopCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -909,18 +910,18 @@ func (c *TxPoolStopCall[T, Constraint]) DoAndReturn(f func()) *TxPoolStopCall[T,
 }
 
 // MocktxPoolInfo is a mock of txPoolInfo interface.
-type MocktxPoolInfo[T any, Constraint consensus.TXConstraint[T]] struct {
+type MocktxPoolInfo[T any, Constraint types.TXConstraint[T]] struct {
 	ctrl     *gomock.Controller
 	recorder *MocktxPoolInfoMockRecorder[T, Constraint]
 }
 
 // MocktxPoolInfoMockRecorder is the mock recorder for MocktxPoolInfo.
-type MocktxPoolInfoMockRecorder[T any, Constraint consensus.TXConstraint[T]] struct {
+type MocktxPoolInfoMockRecorder[T any, Constraint types.TXConstraint[T]] struct {
 	mock *MocktxPoolInfo[T, Constraint]
 }
 
 // NewMocktxPoolInfo creates a new mock instance.
-func NewMocktxPoolInfo[T any, Constraint consensus.TXConstraint[T]](ctrl *gomock.Controller) *MocktxPoolInfo[T, Constraint] {
+func NewMocktxPoolInfo[T any, Constraint types.TXConstraint[T]](ctrl *gomock.Controller) *MocktxPoolInfo[T, Constraint] {
 	mock := &MocktxPoolInfo[T, Constraint]{ctrl: ctrl}
 	mock.recorder = &MocktxPoolInfoMockRecorder[T, Constraint]{mock}
 	return mock
@@ -947,7 +948,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) GetAccountMeta(account, ful
 }
 
 // txPoolInfoGetAccountMetaCall wrap *gomock.Call
-type txPoolInfoGetAccountMetaCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoGetAccountMetaCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -985,7 +986,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) GetMeta(full any) *txPoolIn
 }
 
 // txPoolInfoGetMetaCall wrap *gomock.Call
-type txPoolInfoGetMetaCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoGetMetaCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1023,7 +1024,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) GetPendingTxByHash(txHash a
 }
 
 // txPoolInfoGetPendingTxByHashCall wrap *gomock.Call
-type txPoolInfoGetPendingTxByHashCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoGetPendingTxByHashCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1061,7 +1062,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) GetPendingTxCountByAccount(
 }
 
 // txPoolInfoGetPendingTxCountByAccountCall wrap *gomock.Call
-type txPoolInfoGetPendingTxCountByAccountCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoGetPendingTxCountByAccountCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1099,7 +1100,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) GetTotalPendingTxCount() *t
 }
 
 // txPoolInfoGetTotalPendingTxCountCall wrap *gomock.Call
-type txPoolInfoGetTotalPendingTxCountCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoGetTotalPendingTxCountCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1137,7 +1138,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) HasPendingRequestInPool() *
 }
 
 // txPoolInfoHasPendingRequestInPoolCall wrap *gomock.Call
-type txPoolInfoHasPendingRequestInPoolCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoHasPendingRequestInPoolCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1175,7 +1176,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) IsPoolFull() *txPoolInfoIsP
 }
 
 // txPoolInfoIsPoolFullCall wrap *gomock.Call
-type txPoolInfoIsPoolFullCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoIsPoolFullCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 
@@ -1213,7 +1214,7 @@ func (mr *MocktxPoolInfoMockRecorder[T, Constraint]) PendingRequestsNumberIsRead
 }
 
 // txPoolInfoPendingRequestsNumberIsReadyCall wrap *gomock.Call
-type txPoolInfoPendingRequestsNumberIsReadyCall[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolInfoPendingRequestsNumberIsReadyCall[T any, Constraint types.TXConstraint[T]] struct {
 	*gomock.Call
 }
 

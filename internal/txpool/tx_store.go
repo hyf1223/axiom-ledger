@@ -6,10 +6,12 @@ import (
 	"github.com/google/btree"
 	"github.com/sirupsen/logrus"
 
-	"github.com/axiomesh/axiom-bft/common/consensus"
+	"github.com/axiomesh/axiom-kit/txpool"
+
+	"github.com/axiomesh/axiom-kit/types"
 )
 
-type transactionStore[T any, Constraint consensus.TXConstraint[T]] struct {
+type transactionStore[T any, Constraint types.TXConstraint[T]] struct {
 	logger logrus.FieldLogger
 
 	// track all valid tx hashes cached in txpool
@@ -32,7 +34,7 @@ type transactionStore[T any, Constraint consensus.TXConstraint[T]] struct {
 	batchedTxs map[txPointer]bool
 
 	// cache all batches created by current primary in order, removed after they are been executed.
-	batchesCache map[string]*RequestHashBatch[T, Constraint]
+	batchesCache map[string]*txpool.RequestHashBatch[T, Constraint]
 
 	// trace the missing transaction
 	missingBatch map[string]map[uint64]string
@@ -49,7 +51,7 @@ type transactionStore[T any, Constraint consensus.TXConstraint[T]] struct {
 	removeTTLIndex *btreeIndex[T, Constraint]
 }
 
-func newTransactionStore[T any, Constraint consensus.TXConstraint[T]](f GetAccountNonceFunc, logger logrus.FieldLogger) *transactionStore[T, Constraint] {
+func newTransactionStore[T any, Constraint types.TXConstraint[T]](f GetAccountNonceFunc, logger logrus.FieldLogger) *transactionStore[T, Constraint] {
 	return &transactionStore[T, Constraint]{
 		logger:               logger,
 		priorityNonBatchSize: 0,
@@ -57,7 +59,7 @@ func newTransactionStore[T any, Constraint consensus.TXConstraint[T]](f GetAccou
 		allTxs:               make(map[string]*txSortedMap[T, Constraint]),
 		batchedTxs:           make(map[txPointer]bool),
 		missingBatch:         make(map[string]map[uint64]string),
-		batchesCache:         make(map[string]*RequestHashBatch[T, Constraint]),
+		batchesCache:         make(map[string]*txpool.RequestHashBatch[T, Constraint]),
 		parkingLotIndex:      newBtreeIndex[T, Constraint](Ordered),
 		priorityIndex:        newBtreeIndex[T, Constraint](Ordered),
 		localTTLIndex:        newBtreeIndex[T, Constraint](Rebroadcast),
@@ -121,14 +123,14 @@ func (txStore *transactionStore[T, Constraint]) getPoolTxByTxnPointer(account st
 }
 
 // todo: gc the empty account in txpool(delete key)
-type txSortedMap[T any, Constraint consensus.TXConstraint[T]] struct {
+type txSortedMap[T any, Constraint types.TXConstraint[T]] struct {
 	items map[uint64]*internalTransaction[T, Constraint] // map nonce to transaction
 	index *btreeIndex[T, Constraint]                     // index for items' nonce
 	//empty     bool
 	//emptyTime int64
 }
 
-func newTxSortedMap[T any, Constraint consensus.TXConstraint[T]]() *txSortedMap[T, Constraint] {
+func newTxSortedMap[T any, Constraint types.TXConstraint[T]]() *txSortedMap[T, Constraint] {
 	return &txSortedMap[T, Constraint]{
 		items: make(map[uint64]*internalTransaction[T, Constraint]),
 		index: newBtreeIndex[T, Constraint](SortNonce),

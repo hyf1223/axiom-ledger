@@ -4,6 +4,8 @@ import (
 	"sort"
 
 	"github.com/samber/lo"
+
+	"github.com/axiomesh/axiom-kit/txpool"
 )
 
 func (p *txPoolImpl[T, Constraint]) GetTotalPendingTxCount() uint64 {
@@ -71,11 +73,11 @@ func (p *txPoolImpl[T, Constraint]) handleGetPendingTxByHash(hash string) *T {
 	return item.rawTx
 }
 
-func (p *txPoolImpl[T, Constraint]) GetAccountMeta(account string, full bool) *AccountMeta[T, Constraint] {
+func (p *txPoolImpl[T, Constraint]) GetAccountMeta(account string, full bool) *txpool.AccountMeta[T, Constraint] {
 	req := &reqAccountPoolMetaMsg[T, Constraint]{
 		account: account,
 		full:    full,
-		ch:      make(chan *AccountMeta[T, Constraint]),
+		ch:      make(chan *txpool.AccountMeta[T, Constraint]),
 	}
 	ev := &poolInfoEvent{
 		EventType: reqAccountMetaEvent,
@@ -85,28 +87,28 @@ func (p *txPoolImpl[T, Constraint]) GetAccountMeta(account string, full bool) *A
 	return <-req.ch
 }
 
-func (p *txPoolImpl[T, Constraint]) handleGetAccountMeta(account string, full bool) *AccountMeta[T, Constraint] {
+func (p *txPoolImpl[T, Constraint]) handleGetAccountMeta(account string, full bool) *txpool.AccountMeta[T, Constraint] {
 	if p.txStore.allTxs[account] == nil {
-		return &AccountMeta[T, Constraint]{
+		return &txpool.AccountMeta[T, Constraint]{
 			CommitNonce:  p.txStore.nonceCache.getCommitNonce(account),
 			PendingNonce: p.txStore.nonceCache.getPendingNonce(account),
 			TxCount:      0,
-			Txs:          []*TxInfo[T, Constraint]{},
-			SimpleTxs:    []*TxSimpleInfo{},
+			Txs:          []*txpool.TxInfo[T, Constraint]{},
+			SimpleTxs:    []*txpool.TxSimpleInfo{},
 		}
 	}
 
 	fullTxs := p.txStore.allTxs[account].items
-	res := &AccountMeta[T, Constraint]{
+	res := &txpool.AccountMeta[T, Constraint]{
 		CommitNonce:  p.txStore.nonceCache.getCommitNonce(account),
 		PendingNonce: p.txStore.nonceCache.getPendingNonce(account),
 		TxCount:      uint64(len(fullTxs)),
 	}
 
 	if full {
-		res.Txs = make([]*TxInfo[T, Constraint], 0, len(fullTxs))
+		res.Txs = make([]*txpool.TxInfo[T, Constraint], 0, len(fullTxs))
 		for _, tx := range fullTxs {
-			res.Txs = append(res.Txs, &TxInfo[T, Constraint]{
+			res.Txs = append(res.Txs, &txpool.TxInfo[T, Constraint]{
 				Tx:          tx.rawTx,
 				Local:       tx.local,
 				LifeTime:    tx.lifeTime,
@@ -117,10 +119,10 @@ func (p *txPoolImpl[T, Constraint]) handleGetAccountMeta(account string, full bo
 			return Constraint(res.Txs[i].Tx).RbftGetNonce() < Constraint(res.Txs[j].Tx).RbftGetNonce()
 		})
 	} else {
-		res.SimpleTxs = make([]*TxSimpleInfo, 0, len(fullTxs))
+		res.SimpleTxs = make([]*txpool.TxSimpleInfo, 0, len(fullTxs))
 		for _, tx := range fullTxs {
 			c := Constraint(tx.rawTx)
-			res.SimpleTxs = append(res.SimpleTxs, &TxSimpleInfo{
+			res.SimpleTxs = append(res.SimpleTxs, &txpool.TxSimpleInfo{
 				Hash:        c.RbftGetTxHash(),
 				Nonce:       c.RbftGetNonce(),
 				Size:        c.RbftGetSize(),
@@ -137,10 +139,10 @@ func (p *txPoolImpl[T, Constraint]) handleGetAccountMeta(account string, full bo
 	return res
 }
 
-func (p *txPoolImpl[T, Constraint]) GetMeta(full bool) *Meta[T, Constraint] {
+func (p *txPoolImpl[T, Constraint]) GetMeta(full bool) *txpool.Meta[T, Constraint] {
 	req := &reqPoolMetaMsg[T, Constraint]{
 		full: full,
-		ch:   make(chan *Meta[T, Constraint]),
+		ch:   make(chan *txpool.Meta[T, Constraint]),
 	}
 	ev := &poolInfoEvent{
 		EventType: reqPoolMetaEvent,
@@ -150,22 +152,22 @@ func (p *txPoolImpl[T, Constraint]) GetMeta(full bool) *Meta[T, Constraint] {
 	return <-req.ch
 }
 
-func (p *txPoolImpl[T, Constraint]) handleGetMeta(full bool) *Meta[T, Constraint] {
-	res := &Meta[T, Constraint]{
+func (p *txPoolImpl[T, Constraint]) handleGetMeta(full bool) *txpool.Meta[T, Constraint] {
+	res := &txpool.Meta[T, Constraint]{
 		TxCountLimit:    p.poolMaxSize,
 		TxCount:         uint64(len(p.txStore.txHashMap)),
 		ReadyTxCount:    p.txStore.priorityNonBatchSize,
-		Batches:         make(map[string]*BatchSimpleInfo, len(p.txStore.batchesCache)),
+		Batches:         make(map[string]*txpool.BatchSimpleInfo, len(p.txStore.batchesCache)),
 		MissingBatchTxs: make(map[string]map[uint64]string, len(p.txStore.missingBatch)),
-		Accounts:        make(map[string]*AccountMeta[T, Constraint], len(p.txStore.allTxs)),
+		Accounts:        make(map[string]*txpool.AccountMeta[T, Constraint], len(p.txStore.allTxs)),
 	}
 	for _, batch := range p.txStore.batchesCache {
-		txs := make([]*TxSimpleInfo, 0, len(batch.TxHashList))
+		txs := make([]*txpool.TxSimpleInfo, 0, len(batch.TxHashList))
 		for _, txHash := range batch.TxHashList {
 			txIdx := p.txStore.txHashMap[txHash]
 			tx := p.txStore.allTxs[txIdx.account].items[txIdx.nonce]
 			c := Constraint(tx.rawTx)
-			txs = append(txs, &TxSimpleInfo{
+			txs = append(txs, &txpool.TxSimpleInfo{
 				Hash:        c.RbftGetTxHash(),
 				Nonce:       c.RbftGetNonce(),
 				Size:        c.RbftGetSize(),
@@ -174,7 +176,7 @@ func (p *txPoolImpl[T, Constraint]) handleGetMeta(full bool) *Meta[T, Constraint
 				ArrivedTime: tx.arrivedTime,
 			})
 		}
-		res.Batches[batch.BatchHash] = &BatchSimpleInfo{
+		res.Batches[batch.BatchHash] = &txpool.BatchSimpleInfo{
 			TxCount:   uint64(len(batch.TxHashList)),
 			Txs:       txs,
 			Timestamp: batch.Timestamp,

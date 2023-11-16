@@ -12,7 +12,9 @@ import (
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/sirupsen/logrus"
 
-	"github.com/axiomesh/axiom-ledger/pkg/txpool"
+	txpool2 "github.com/axiomesh/axiom-ledger/internal/txpool"
+
+	"github.com/axiomesh/axiom-kit/txpool"
 
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-kit/log"
@@ -67,7 +69,7 @@ func NewAxiomLedger(rep *repo.Repo, ctx context.Context, cancel context.CancelFu
 		fn := func(addr string) uint64 {
 			return getNonceFn(types.NewAddressByStr(addr))
 		}
-		txpoolConf := txpool.Config{
+		txpoolConf := txpool2.Config{
 			Logger:              loggers.Logger(loggers.TxPool),
 			BatchSize:           rep.EpochInfo.ConsensusParams.BlockMaxTxNum,
 			PoolSize:            poolConf.PoolSize,
@@ -77,7 +79,7 @@ func NewAxiomLedger(rep *repo.Repo, ctx context.Context, cancel context.CancelFu
 			GetAccountNonce:     fn,
 			IsTimed:             rep.EpochInfo.ConsensusParams.EnableTimedGenEmptyBlock,
 		}
-		axm.TxPool, err = txpool.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
+		axm.TxPool, err = txpool2.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
 		if err != nil {
 			return nil, fmt.Errorf("new txpool failed: %w", err)
 		}

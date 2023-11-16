@@ -9,16 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	txpool2 "github.com/axiomesh/axiom-ledger/internal/txpool"
+
 	"github.com/axiomesh/axiom-ledger/internal/components/timer"
 
 	"github.com/axiomesh/axiom-kit/log"
+	"github.com/axiomesh/axiom-kit/txpool"
 	"github.com/axiomesh/axiom-kit/types"
 	"github.com/axiomesh/axiom-ledger/internal/consensus/common"
 	"github.com/axiomesh/axiom-ledger/internal/consensus/precheck"
 	"github.com/axiomesh/axiom-ledger/internal/consensus/precheck/mock_precheck"
 	"github.com/axiomesh/axiom-ledger/internal/network/mock_network"
 	"github.com/axiomesh/axiom-ledger/pkg/repo"
-	"github.com/axiomesh/axiom-ledger/pkg/txpool"
 )
 
 const (
@@ -36,7 +38,7 @@ func mockTxPool(t *testing.T) txpool.TxPool[types.Transaction, *types.Transactio
 	repoRoot := t.TempDir()
 	r, err := repo.Load(repoRoot)
 	require.Nil(t, err)
-	txpoolConf := txpool.Config{
+	txpoolConf := txpool2.Config{
 		IsTimed:             false,
 		Logger:              &common.Logger{FieldLogger: logger},
 		BatchSize:           r.Config.Genesis.EpochInfo.ConsensusParams.BlockMaxTxNum,
@@ -47,7 +49,7 @@ func mockTxPool(t *testing.T) txpool.TxPool[types.Transaction, *types.Transactio
 		},
 	}
 
-	txpoolInst, err := txpool.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
+	txpoolInst, err := txpool2.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
 	require.Nil(t, err)
 	return txpoolInst
 }
@@ -65,7 +67,7 @@ func mockSoloNode(t *testing.T, enableTimed bool) (*Node, error) {
 	mockNetwork := mock_network.NewMockNetwork(mockCtl)
 	mockPrecheck := mock_precheck.NewMockMinPreCheck(mockCtl, validTxsCh)
 
-	txpoolConf := txpool.Config{
+	txpoolConf := txpool2.Config{
 		IsTimed:             r.Config.Genesis.EpochInfo.ConsensusParams.EnableTimedGenEmptyBlock,
 		Logger:              &common.Logger{FieldLogger: logger},
 		BatchSize:           r.Config.Genesis.EpochInfo.ConsensusParams.BlockMaxTxNum,
@@ -83,7 +85,7 @@ func mockSoloNode(t *testing.T, enableTimed bool) (*Node, error) {
 		txpoolConf.IsTimed = false
 		noTxBatchTimeout = cfg.TimedGenBlock.NoTxBatchTimeout.ToDuration()
 	}
-	txpoolInst, err := txpool.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
+	txpoolInst, err := txpool2.NewTxPool[types.Transaction, *types.Transaction](txpoolConf)
 	require.Nil(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 

@@ -15,14 +15,14 @@ import (
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 
+	"github.com/axiomesh/axiom-kit/txpool"
+
 	"github.com/axiomesh/axiom-ledger/internal/components/timer"
 
 	"github.com/axiomesh/axiom-kit/types"
-
-	"github.com/axiomesh/axiom-bft/common/consensus"
 )
 
-var _ TxPool[types.Transaction, *types.Transaction] = (*txPoolImpl[types.Transaction, *types.Transaction])(nil)
+var _ txpool.TxPool[types.Transaction, *types.Transaction] = (*txPoolImpl[types.Transaction, *types.Transaction])(nil)
 
 var (
 	ErrTxPoolFull   = errors.New("tx pool full")
@@ -32,7 +32,7 @@ var (
 )
 
 // txPoolImpl contains all currently known transactions.
-type txPoolImpl[T any, Constraint consensus.TXConstraint[T]] struct {
+type txPoolImpl[T any, Constraint types.TXConstraint[T]] struct {
 	logger              logrus.FieldLogger
 	selfID              uint64
 	batchSize           uint64
@@ -44,6 +44,7 @@ type txPoolImpl[T any, Constraint consensus.TXConstraint[T]] struct {
 	poolMaxSize         uint64
 
 	getAccountNonce       GetAccountNonceFunc
+	notifyGenerateBatch   bool
 	notifyGenerateBatchFn func(typ int)
 	notifyFindNextBatchFn func(completionMissingBatchHashes ...string) // notify consensus that it can find next batch
 
@@ -118,7 +119,7 @@ func (p *txPoolImpl[T, Constraint]) processEvent(event txPoolEvent) []txPoolEven
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []txPoolEvent {
-	//p.logger.Debugf("start dispatch add txs event", event)
+	p.logger.Debugf("start dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	var (
 		fullErr                      error
 		err                          error
@@ -175,23 +176,26 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 	}
 
 	if notifyGenBatch {
-		p.notifyGenerateBatchFn(GenBatchSizeEvent)
+		p.logger.Infof("notify generate batch")
+		p.notifyGenerateBatchFn(txpool.GenBatchSizeEvent)
 	}
 	if len(completionMissingBatchHashes) != 0 {
+		p.logger.Infof("notify find next batch")
 		p.notifyFindNextBatchFn(completionMissingBatchHashes...)
 	}
 
 	if removeEvent != nil {
 		nextEvents = append(nextEvents, removeEvent)
 	}
-	//p.logger.Debugf("end dispatch add txs event", event)
+	p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	return nextEvents
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchRemoveTxsEvent(event *removeTxsEvent) {
-	p.logger.Debugf("start dispatch remove txs event:%d", event.EventType)
-	defer p.logger.Debugf("end dispatch remove txs event:%d", event.EventType)
+	p.logger.Debugf("start dispatch remove txs event:%s", removeTxsEventToStr[event.EventType])
 	start := time.Now()
+	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+		"end dispatch remove txs event:%s", removeTxsEventToStr[event.EventType])
 	metricsPrefix := "removeTxs_"
 	switch event.EventType {
 	case highNonceTxsEvent:
@@ -222,18 +226,25 @@ func (p *txPoolImpl[T, Constraint]) dispatchRemoveTxsEvent(event *removeTxsEvent
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
-	p.logger.Debugf("start dispatch batch event:%d", event.EventType)
-	defer p.logger.Debugf("end dispatch batch event:%d", event.EventType)
+	p.logger.Debugf("start dispatch batch event:%s", batchEventToStr[event.EventType])
 	start := time.Now()
+	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch batch event:%d", event.EventType)
 	metricsPrefix := "batch_"
 	switch event.EventType {
-	case GenBatchTimeoutEvent, GenBatchFirstEvent, GenBatchSizeEvent, GenBatchNoTxTimeoutEvent:
+	case txpool.GenBatchTimeoutEvent, txpool.GenBatchFirstEvent, txpool.GenBatchSizeEvent, txpool.GenBatchNoTxTimeoutEvent:
+		// it means primary receive the notify signal, and trigger the generate batch size event
+		// we need reset the notify flag
+
+		// if receive GenBatchFirstEvent, it means the new primary is elected, and it could generate batch,
+		// so we need reset the notify flag in case of the new primary's txpool exist many txs
+		p.notifyGenerateBatch = false
+
 		err := p.handleGenBatchRequest(event)
 		if err != nil {
 			p.logger.Warning(err)
 		}
-		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, batchEventToString[event.EventType])).Observe(time.Since(start).Seconds())
-	case ReConstructBatchEvent:
+		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, batchEventToStr[event.EventType])).Observe(time.Since(start).Seconds())
+	case txpool.ReConstructBatchEvent:
 		req := event.Event.(*reqReConstructBatch[T, Constraint])
 		deDuplicateTxHashes, err := p.handleReConstructBatchByOrder(req.oldBatch)
 		if err != nil {
@@ -244,7 +255,7 @@ func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 			}
 		}
 		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "reConstructBatch")).Observe(time.Since(start).Seconds())
-	case GetTxsForGenBatchEvent:
+	case txpool.GetTxsForGenBatchEvent:
 		req := event.Event.(*reqGetTxsForGenBatch[T, Constraint])
 		txs, localList, missingTxsHash, err := p.handleGetRequestsByHashList(req.batchHash, req.timestamp, req.hashList, req.deDuplicateTxHashes)
 		if err != nil {
@@ -260,7 +271,7 @@ func (p *txPoolImpl[T, Constraint]) dispatchBatchEvent(event *batchEvent) {
 
 		processEventDuration.WithLabelValues(fmt.Sprintf("%s%s", metricsPrefix, "getTxsForGenBatch")).Observe(time.Since(start).Seconds())
 	default:
-		p.logger.Warningf("unknown generate batch event type: %d", event.EventType)
+		p.logger.Warningf("unknown generate batch event type: %s", batchEventToStr[event.EventType])
 	}
 }
 
@@ -279,9 +290,10 @@ func (p *txPoolImpl[T, Constraint]) handleGenBatchRequest(event *batchEvent) err
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchGetPoolInfoEvent(event *poolInfoEvent) {
-	p.logger.Debugf("start dispatch get pool info event:%d", event.EventType)
-	defer p.logger.Debugf("end dispatch get pool info event:%d", event.EventType)
+	p.logger.Debugf("start dispatch get pool info event:%s", poolInfoEventToStr[event.EventType])
 	start := time.Now()
+	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+		"end dispatch get pool info event:%s", poolInfoEventToStr[event.EventType])
 	metricsPrefix := "getInfo_"
 	switch event.EventType {
 	case reqPendingTxCountEvent:
@@ -308,9 +320,10 @@ func (p *txPoolImpl[T, Constraint]) dispatchGetPoolInfoEvent(event *poolInfoEven
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchConsensusEvent(event *consensusEvent) {
-	p.logger.Debugf("start dispatch consensus event:%d", event.EventType)
-	defer p.logger.Debugf("end dispatch consensus event:%d", event.EventType)
+	p.logger.Debugf("start dispatch consensus event:%s", consensusEventToStr[event.EventType])
 	start := time.Now()
+	defer p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf(
+		"end dispatch consensus event:%s", consensusEventToStr[event.EventType])
 	metricsPrefix := "consensus_"
 	switch event.EventType {
 	case SendMissingTxsEvent:
@@ -518,8 +531,10 @@ func (p *txPoolImpl[T, Constraint]) addNewRequests(txs []*T, local, isReplace bo
 
 	var notifyGenBatch bool
 
-	if p.txStore.priorityNonBatchSize >= p.batchSize {
+	// when primary generate batch, reset notifyGenerateBatch flag
+	if p.txStore.priorityNonBatchSize >= p.batchSize && !p.notifyGenerateBatch {
 		notifyGenBatch = true
+		p.notifyGenerateBatch = true
 	}
 	return notifyGenBatch, completionMissingBatchHashes, nil, nil
 }
@@ -605,7 +620,7 @@ func (p *txPoolImpl[T, Constraint]) Stop() {
 }
 
 // newTxPoolImpl returns the txpool instance.
-func newTxPoolImpl[T any, Constraint consensus.TXConstraint[T]](config Config) (*txPoolImpl[T, Constraint], error) {
+func newTxPoolImpl[T any, Constraint types.TXConstraint[T]](config Config) (*txPoolImpl[T, Constraint], error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	txpoolImp := &txPoolImpl[T, Constraint]{
@@ -664,7 +679,7 @@ func newTxPoolImpl[T any, Constraint consensus.TXConstraint[T]](config Config) (
 	return txpoolImp, nil
 }
 
-func (p *txPoolImpl[T, Constraint]) Init(conf ConsensusConfig) {
+func (p *txPoolImpl[T, Constraint]) Init(conf txpool.ConsensusConfig) {
 	p.selfID = conf.SelfID
 	p.notifyGenerateBatchFn = conf.NotifyGenerateBatchFn
 	p.notifyFindNextBatchFn = conf.NotifyFindNextBatchFn
@@ -672,17 +687,18 @@ func (p *txPoolImpl[T, Constraint]) Init(conf ConsensusConfig) {
 
 // GenerateRequestBatch generates a transaction batch and post it
 // to outside if there are transactions in txPool.
-func (p *txPoolImpl[T, Constraint]) GenerateRequestBatch(typ int) (*RequestHashBatch[T, Constraint], error) {
+func (p *txPoolImpl[T, Constraint]) GenerateRequestBatch(typ int) (*txpool.RequestHashBatch[T, Constraint], error) {
 	return p.generateRequestBatch(typ)
 }
 
 // GenerateRequestBatch generates a transaction batch and post it
 // to outside if there are transactions in txPool.
-func (p *txPoolImpl[T, Constraint]) generateRequestBatch(typ int) (*RequestHashBatch[T, Constraint], error) {
+func (p *txPoolImpl[T, Constraint]) generateRequestBatch(typ int) (*txpool.RequestHashBatch[T, Constraint], error) {
 	req := &reqGenBatch[T, Constraint]{
 		respCh: make(chan *respGenBatch[T, Constraint]),
 	}
-	if typ != GenBatchSizeEvent && typ != GenBatchTimeoutEvent && typ != GenBatchNoTxTimeoutEvent && typ != GenBatchFirstEvent {
+	if typ != txpool.GenBatchSizeEvent && typ != txpool.GenBatchTimeoutEvent &&
+		typ != txpool.GenBatchNoTxTimeoutEvent && typ != txpool.GenBatchFirstEvent {
 		err := fmt.Errorf("invalid batch type %d", typ)
 		return nil, err
 	}
@@ -702,23 +718,22 @@ func (p *txPoolImpl[T, Constraint]) generateRequestBatch(typ int) (*RequestHashB
 
 // handleGenerateRequestBatch fetches next block of transactions for consensus,
 // batchedTx are all txs sent to consensus but were not committed yet, txpool should filter out such txs.
-func (p *txPoolImpl[T, Constraint]) handleGenerateRequestBatch(typ int) (*RequestHashBatch[T, Constraint], error) {
+func (p *txPoolImpl[T, Constraint]) handleGenerateRequestBatch(typ int) (*txpool.RequestHashBatch[T, Constraint], error) {
 	switch typ {
-	case GenBatchSizeEvent, GenBatchFirstEvent:
+	case txpool.GenBatchSizeEvent, txpool.GenBatchFirstEvent:
 		if p.txStore.priorityNonBatchSize < p.batchSize {
-			p.logger.Warningf("actual batch size %d is smaller than %d, ignore generate batch",
+			return nil, fmt.Errorf("actual batch size %d is smaller than %d, ignore generate batch",
 				p.txStore.priorityNonBatchSize, p.batchSize)
-			return nil, nil
 		}
-	case GenBatchTimeoutEvent:
+	case txpool.GenBatchTimeoutEvent:
 		if !p.hasPendingRequestInPool() {
-			p.logger.Debug("there is no pending tx, ignore generate batch")
-			return nil, nil
+			return nil, fmt.Errorf("there is no pending tx, ignore generate batch")
+
 		}
-	case GenBatchNoTxTimeoutEvent:
+	case txpool.GenBatchNoTxTimeoutEvent:
 		if p.hasPendingRequestInPool() {
-			p.logger.Debug("there is pending tx, ignore generate no tx batch")
-			return nil, nil
+			return nil, fmt.Errorf("there is pending tx, ignore generate no tx batch")
+
 		}
 		if !p.isTimed {
 			err := fmt.Errorf("not supported generate no tx batch")
@@ -806,7 +821,7 @@ func (p *txPoolImpl[T, Constraint]) handleGenerateRequestBatch(typ int) (*Reques
 		localList[i] = poolTx.local
 	}
 
-	txBatch := &RequestHashBatch[T, Constraint]{
+	txBatch := &txpool.RequestHashBatch[T, Constraint]{
 		TxHashList: hashList,
 		TxList:     txList,
 		LocalList:  localList,
@@ -1102,7 +1117,7 @@ func (p *txPoolImpl[T, Constraint]) GetRequestsByHashList(batchHash string, time
 	}
 
 	ev := &batchEvent{
-		EventType: GetTxsForGenBatchEvent,
+		EventType: txpool.GetTxsForGenBatchEvent,
 		Event:     req,
 	}
 	p.postEvent(ev)
@@ -1190,7 +1205,7 @@ func (p *txPoolImpl[T, Constraint]) handleGetRequestsByHashList(batchHash string
 		p.txStore.batchedTxs[*pointer] = true
 	}
 	// store the batch to cache
-	batch := &RequestHashBatch[T, Constraint]{
+	batch := &txpool.RequestHashBatch[T, Constraint]{
 		BatchHash:  batchHash,
 		TxList:     txs,
 		TxHashList: hashList,
@@ -1298,7 +1313,7 @@ func (p *txPoolImpl[T, Constraint]) handleSendMissingRequests(batchHash string, 
 			return nil, fmt.Errorf("transaction %s doesn't exist in txHashMap", txHash)
 		}
 	}
-	var targetBatch *RequestHashBatch[T, Constraint]
+	var targetBatch *txpool.RequestHashBatch[T, Constraint]
 	var ok bool
 	if targetBatch, ok = p.txStore.batchesCache[batchHash]; !ok {
 		return nil, fmt.Errorf("batch %s doesn't exist in batchedCache", batchHash)
@@ -1315,7 +1330,7 @@ func (p *txPoolImpl[T, Constraint]) handleSendMissingRequests(batchHash string, 
 }
 
 // ReConstructBatchByOrder reconstruct batch from empty txPool by order, must be called after RestorePool.
-func (p *txPoolImpl[T, Constraint]) ReConstructBatchByOrder(oldBatch *RequestHashBatch[T, Constraint]) (
+func (p *txPoolImpl[T, Constraint]) ReConstructBatchByOrder(oldBatch *txpool.RequestHashBatch[T, Constraint]) (
 	deDuplicateTxHashes []string, err error) {
 
 	req := &reqReConstructBatch[T, Constraint]{
@@ -1323,7 +1338,7 @@ func (p *txPoolImpl[T, Constraint]) ReConstructBatchByOrder(oldBatch *RequestHas
 		respCh:   make(chan *respReConstructBatch),
 	}
 	ev := &batchEvent{
-		EventType: ReConstructBatchEvent,
+		EventType: txpool.ReConstructBatchEvent,
 		Event:     req,
 	}
 	p.postEvent(ev)
@@ -1331,7 +1346,7 @@ func (p *txPoolImpl[T, Constraint]) ReConstructBatchByOrder(oldBatch *RequestHas
 	return resp.deDuplicateTxHashes, resp.err
 }
 
-func (p *txPoolImpl[T, Constraint]) handleReConstructBatchByOrder(oldBatch *RequestHashBatch[T, Constraint]) ([]string, error) {
+func (p *txPoolImpl[T, Constraint]) handleReConstructBatchByOrder(oldBatch *txpool.RequestHashBatch[T, Constraint]) ([]string, error) {
 
 	// check if there exists duplicate batch hash.
 	if _, ok := p.txStore.batchesCache[oldBatch.BatchHash]; ok {
@@ -1363,7 +1378,7 @@ func (p *txPoolImpl[T, Constraint]) handleReConstructBatchByOrder(oldBatch *Requ
 		localList[index] = false
 	})
 
-	batch := &RequestHashBatch[T, Constraint]{
+	batch := &txpool.RequestHashBatch[T, Constraint]{
 		TxHashList: oldBatch.TxHashList,
 		TxList:     oldBatch.TxList,
 		LocalList:  localList,
@@ -1618,7 +1633,7 @@ func (p *txPoolImpl[T, Constraint]) replaceTx(tx *T, local, ready bool) {
 }
 
 // getBatchHash calculate hash of a RequestHashBatch
-func getBatchHash[T any, Constraint consensus.TXConstraint[T]](batch *RequestHashBatch[T, Constraint]) string {
+func getBatchHash[T any, Constraint types.TXConstraint[T]](batch *txpool.RequestHashBatch[T, Constraint]) string {
 	h := md5.New()
 	for _, hash := range batch.TxHashList {
 		_, _ = h.Write([]byte(hash))

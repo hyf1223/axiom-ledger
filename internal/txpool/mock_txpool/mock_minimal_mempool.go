@@ -3,7 +3,7 @@ package mock_txpool
 import (
 	"go.uber.org/mock/gomock"
 
-	"github.com/axiomesh/axiom-bft/common/consensus"
+	"github.com/axiomesh/axiom-kit/types"
 )
 
 // NewMockMinimalTxPool returns a minimal implement of MockTxPool which accepts
@@ -11,7 +11,7 @@ import (
 // Users can defines custom MockTxPool like this:
 // func NewMockCustomTxPool(ctrl *gomock.Controller) *MockTxPool {...}
 // in which users must specify output for all functions.
-func NewMockMinimalTxPool[T any, Constraint consensus.TXConstraint[T]](ctrl *gomock.Controller) *MockTxPool[T, Constraint] {
+func NewMockMinimalTxPool[T any, Constraint types.TXConstraint[T]](ctrl *gomock.Controller) *MockTxPool[T, Constraint] {
 	mock := NewMockTxPool[T, Constraint](ctrl)
 	mock.EXPECT().GenerateRequestBatch(gomock.Any()).Return(nil, nil).AnyTimes()
 	mock.EXPECT().AddLocalTx(gomock.Any()).Return(nil).AnyTimes()

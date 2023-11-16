@@ -19,9 +19,3 @@ type Config struct {
 	ToleranceRemoveTime time.Duration
 	GetAccountNonce     GetAccountNonceFunc
 }
-
-type ConsensusConfig struct {
-	SelfID                uint64
-	NotifyGenerateBatchFn func(typ int)                                // notify consensus that it can generate a new batch
-	NotifyFindNextBatchFn func(completionMissingBatchHashes ...string) // notify consensus that it can find next batch
-}

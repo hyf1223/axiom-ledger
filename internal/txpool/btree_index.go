@@ -6,7 +6,7 @@ import (
 	"github.com/google/btree"
 	"github.com/samber/lo"
 
-	"github.com/axiomesh/axiom-bft/common/consensus"
+	"github.com/axiomesh/axiom-kit/types"
 )
 
 const (
@@ -61,12 +61,12 @@ func makeSortedNonceKey(nonce uint64) *sortedNonceKey {
 	}
 }
 
-type btreeIndex[T any, Constraint consensus.TXConstraint[T]] struct {
+type btreeIndex[T any, Constraint types.TXConstraint[T]] struct {
 	data *btree.BTree
 	typ  int
 }
 
-func newBtreeIndex[T any, Constraint consensus.TXConstraint[T]](typ int) *btreeIndex[T, Constraint] {
+func newBtreeIndex[T any, Constraint types.TXConstraint[T]](typ int) *btreeIndex[T, Constraint] {
 	return &btreeIndex[T, Constraint]{
 		data: btree.New(btreeDegree),
 		typ:  typ,

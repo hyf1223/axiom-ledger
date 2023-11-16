@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	"github.com/axiomesh/axiom-ledger/pkg/txpool/mock_txpool"
+	"github.com/axiomesh/axiom-ledger/internal/txpool/mock_txpool"
 
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-bft/common/consensus"
