@@ -8,6 +8,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/axiomesh/axiom-kit/txpool"
+
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-kit/types"
 	"github.com/axiomesh/axiom-ledger/internal/block_sync"
@@ -26,6 +28,7 @@ type Config struct {
 	GenesisEpochInfo                            *rbft.EpochInfo
 	Network                                     network.Network
 	BlockSync                                   block_sync.Sync
+	TxPool                                      txpool.TxPool[types.Transaction, *types.Transaction]
 	Applied                                     uint64
 	Digest                                      string
 	GenesisDigest                               string
@@ -43,6 +46,12 @@ func WithConfig(repoRoot string, cfg *repo.ConsensusConfig) Option {
 	return func(config *Config) {
 		config.RepoRoot = repoRoot
 		config.Config = cfg
+	}
+}
+
+func WithTxPool(tp txpool.TxPool[types.Transaction, *types.Transaction]) Option {
+	return func(config *Config) {
+		config.TxPool = tp
 	}
 }
 
