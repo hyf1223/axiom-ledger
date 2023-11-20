@@ -88,7 +88,7 @@ func MockMiniNetwork(ctrl *gomock.Controller, selfAddr string) *mock_network.Moc
 
 	N := 3
 	f := (N - 1) / 3
-	mock.EXPECT().CountConnectedPeers().Return(uint64((N + f + 2) / 2)).AnyTimes()
+	mock.EXPECT().CountConnectedValidators().Return(uint64((N + f + 2) / 2)).AnyTimes()
 	mock.EXPECT().PeerID().Return(selfAddr).AnyTimes()
 	return mock
 }

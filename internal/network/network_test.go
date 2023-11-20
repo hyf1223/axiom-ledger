@@ -33,7 +33,7 @@ func TestSwarm_OtherPeers(t *testing.T) {
 	swarms := newMockSwarms(t, peerCnt, false)
 	defer stopSwarms(t, swarms)
 
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -43,7 +43,7 @@ func TestVersionCheck(t *testing.T) {
 	// pass true to change the last Node's version
 	swarms := newMockSwarms(t, peerCnt, true)
 	defer stopSwarms(t, swarms)
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -226,7 +226,7 @@ func TestSwarm_Gater(t *testing.T) {
 	swarms := newMockSwarms(t, peerCnt, false)
 	defer stopSwarms(t, swarms)
 
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 	gater := newConnectionGater(swarms[0].logger, swarms[0].ledger)
@@ -249,7 +249,7 @@ func TestSwarm_Send(t *testing.T) {
 	swarms := newMockSwarms(t, peerCnt, false)
 	defer stopSwarms(t, swarms)
 
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -288,7 +288,7 @@ func TestSwarm_RegisterMsgHandler(t *testing.T) {
 	swarms := newMockSwarms(t, peerCnt, false)
 	defer stopSwarms(t, swarms)
 
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -340,7 +340,7 @@ func TestSwarm_RegisterMultiMsgHandler(t *testing.T) {
 	swarms := newMockSwarms(t, peerCnt, false)
 	defer stopSwarms(t, swarms)
 
-	for swarms[0].CountConnectedPeers() != 3 {
+	for swarms[0].CountConnectedValidators() != 3 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
