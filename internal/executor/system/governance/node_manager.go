@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/samber/lo"
@@ -193,33 +194,50 @@ func (nm *NodeManager) propose(addr ethcommon.Address, args *ProposalArgs) (*vm.
 		return result, nil
 	}
 
+	result.ReturnData, result.Err = nm.proposeNodeAddRemove(addr, args)
+
+	return result, nil
+}
+
+func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *ProposalArgs) ([]byte, error) {
+
 	nodeArgs, err := nm.getNodeProposalArgs(args)
 	if err != nil {
 		return nil, err
 	}
 
-	result.ReturnData, result.Err = nm.proposeNodeAddRemove(addr, nodeArgs)
+	if args.ProposalType == uint8(NodeAdd) {
+		// check addr if is exist in council
+		isExist, council := CheckInCouncil(nm.councilAccount, addr.String())
+		if !isExist {
+			log.Println(council)
+			return nil, ErrNotFoundCouncilMember
+		}
+	} else {
+		//check whether the from address and node address are consistent
+		for _, node := range nodeArgs.NodeExtraArgs.Nodes {
+			if addr.String() != node.Address {
+				//If the addresses are inconsistent, verify whether the address that initiated the proposal is a member of the committee.
+				isExist, council := CheckInCouncil(nm.councilAccount, addr.String())
+				if !isExist {
+					log.Println(council)
+					return nil, ErrNotFoundCouncilMember
+				}
+			}
+		}
 
-	return result, nil
-}
+	}
 
-func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *NodeProposalArgs) ([]byte, error) {
-	baseProposal, err := nm.gov.Propose(&addr, ProposalType(args.ProposalType), args.Title, args.Desc, args.BlockNumber, nm.lastHeight)
+	baseProposal, err := nm.gov.Propose(&addr, ProposalType(nodeArgs.ProposalType), nodeArgs.Title, nodeArgs.Desc, nodeArgs.BlockNumber, nm.lastHeight)
 	if err != nil {
 		return nil, err
 	}
 
 	// check proposal has repeated nodes
-	if len(lo.Uniq[string](lo.Map[*NodeMember, string](args.Nodes, func(item *NodeMember, index int) string {
+	if len(lo.Uniq[string](lo.Map[*NodeMember, string](nodeArgs.Nodes, func(item *NodeMember, index int) string {
 		return item.NodeId
-	}))) != len(args.Nodes) {
+	}))) != len(nodeArgs.Nodes) {
 		return nil, ErrRepeatedNodeID
-	}
-
-	// check addr if is exist in council
-	isExist, council := CheckInCouncil(nm.councilAccount, addr.String())
-	if !isExist {
-		return nil, ErrNotFoundCouncilMember
 	}
 
 	// set proposal id
@@ -232,7 +250,8 @@ func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *NodePr
 		return nil, err
 	}
 	proposal.ID = id
-	proposal.Nodes = args.Nodes
+	proposal.Nodes = nodeArgs.Nodes
+	council := &Council{}
 	proposal.TotalVotes = lo.Sum[uint64](lo.Map[*CouncilMember, uint64](council.Members, func(item *CouncilMember, index int) uint64 {
 		return item.Weight
 	}))
@@ -402,7 +421,7 @@ func (nm *NodeManager) voteNodeAddRemove(user ethcommon.Address, proposal *NodeP
 			})
 
 			for _, node := range proposal.Nodes {
-				err = base.RemoveNode(nm.stateLedger, node.ID)
+				err = base.RemoveNodeByP2PNodeID(nm.stateLedger, node.NodeId)
 				if err != nil {
 					return nil, err
 				}

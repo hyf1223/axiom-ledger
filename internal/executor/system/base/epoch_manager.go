@@ -387,6 +387,14 @@ func AddNode(lg ledger.StateLedger, newNode rbft.NodeInfo) (uint64, error) {
 // It takes a StateLedger and the ID of the node to remove as input.
 // It returns an error if the node ID is not found in any of the sets.
 func RemoveNode(lg ledger.StateLedger, removeNodeID uint64) error {
+	return removeNodeByField(lg, removeNodeID, "ID")
+}
+
+func RemoveNodeByP2PNodeID(lg ledger.StateLedger, removeByP2PNodeID string) error {
+	return removeNodeByField(lg, removeByP2PNodeID, "P2PNodeID")
+}
+
+func removeNodeByField(lg ledger.StateLedger, fieldValue interface{}, fieldName string) error {
 	// Get the next epoch info from the ledger
 	nextEpochInfo, err := GetNextEpochInfo(lg)
 	if err != nil {
@@ -398,10 +406,20 @@ func RemoveNode(lg ledger.StateLedger, removeNodeID uint64) error {
 		var matchedIdx int
 		var matched bool
 
-		// Find the index of the node with the given ID in the set
+		// Find the index of the node with the given field value in the set
 		for idx, n := range nodes {
-			if n.ID == removeNodeID {
-				matched = true
+			switch fieldName {
+			case "ID":
+				if n.ID == fieldValue {
+					matched = true
+				}
+			case "P2PNodeID":
+				if n.P2PNodeID == fieldValue {
+					matched = true
+				}
+			}
+
+			if matched {
 				matchedIdx = idx
 				break
 			}
@@ -436,5 +454,5 @@ func RemoveNode(lg ledger.StateLedger, removeNodeID uint64) error {
 	}
 
 	// If the node is not found in any of the sets, return an error
-	return errors.Errorf("failed to remove node, node id not found: %d", removeNodeID)
+	return errors.Errorf("failed to remove node, node %s not found: %v", fieldName, fieldValue)
 }

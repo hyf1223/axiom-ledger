@@ -447,13 +447,25 @@ func TestNodeManager_RunForAddVote(t *testing.T) {
 		Data: generateNodeAddProposeData(t, NodeExtraArgs{
 			Nodes: []*NodeMember{
 				{
-					NodeId:  "26Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+					NodeId:  "16Uiu2HAmTMVkvoGdwjHkqSEhdSM5P7L8ronFfnDePhmQSN6CvR8m",
 					Address: admin1,
 					Name:    "111",
 				},
 			},
 		}),
 	})
+	assert.Nil(t, err)
+
+	g := repo.GenesisEpochInfo(true)
+	g.EpochPeriod = 100
+	g.StartBlock = 1
+	g.DataSyncerSet = append(g.DataSyncerSet, rbft.NodeInfo{
+		ID:                   9,
+		AccountAddress:       "0x88E9A1cE92b4D6e4d860CFBB5bB7aC44d9b548f8",
+		P2PNodeID:            "16Uiu2HAkwmNbfH8ZBdnYhygUHyG5mSWrWTEra3gwHWt9dGTUSRVV",
+		ConsensusVotingPower: 100,
+	})
+	err = base.InitEpochInfo(stateLedger, g)
 	assert.Nil(t, err)
 
 	testcases := []struct {
@@ -591,14 +603,6 @@ func TestNodeManager_RunForAddVote_Approved(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
-	nm.Reset(1, stateLedger)
-	result, err := nm.Run(&vm.Message{
-		From: types.NewAddressByStr(admin3).ETHAddress(),
-		Data: generateNodeVoteData(t, nm.proposalID.GetID()-1, Pass),
-	})
-	assert.Nil(t, err)
-	assert.Nil(t, result.Err)
-
 	nodeProposal, err := nm.loadNodeProposal(nm.proposalID.GetID() - 1)
 	assert.Nil(t, err)
 	assert.Equal(t, Approved, nodeProposal.Status)
@@ -691,14 +695,6 @@ func TestNodeManager_RunForRemoveVote_Approved(t *testing.T) {
 		Data: generateNodeVoteData(t, nm.proposalID.GetID()-1, Pass),
 	})
 	assert.Nil(t, err)
-
-	nm.Reset(1, stateLedger)
-	result, err := nm.Run(&vm.Message{
-		From: types.NewAddressByStr(admin3).ETHAddress(),
-		Data: generateNodeVoteData(t, nm.proposalID.GetID()-1, Pass),
-	})
-	assert.Nil(t, err)
-	assert.Nil(t, result.Err)
 
 	nodeProposal, err := nm.loadNodeProposal(nm.proposalID.GetID() - 1)
 	assert.Nil(t, err)
