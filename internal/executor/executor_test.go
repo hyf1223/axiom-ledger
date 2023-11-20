@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-kit/hexutil"
 	"github.com/axiomesh/axiom-kit/storage"
 	"github.com/axiomesh/axiom-kit/types"
@@ -461,10 +462,15 @@ func TestBlockExecutor_ApplyReadonlyTransactions(t *testing.T) {
 	assert.Nil(t, err)
 	err = governance.InitNodeMembers(stateLedger, []*repo.Node{
 		{
-			Name:    "S2luZw==",
-			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
-			Address: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
-			ID:      1,
+			Name:   "S2luZw==",
+			NodeId: "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+		},
+	}, &rbft.EpochInfo{
+		ValidatorSet: []rbft.NodeInfo{
+			{
+				AccountAddress: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
+				P2PNodeID:      "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			},
 		},
 	})
 	assert.Nil(t, err)
@@ -584,10 +590,15 @@ func TestBlockExecutor_ApplyReadonlyTransactionsWithError(t *testing.T) {
 	assert.Nil(t, err)
 	err = governance.InitNodeMembers(stateLedger, []*repo.Node{
 		{
-			Name:    "S2luZw==",
-			NodeId:  "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
-			Address: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
-			ID:      1,
+			Name:   "S2luZw==",
+			NodeId: "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+		},
+	}, &rbft.EpochInfo{
+		ValidatorSet: []rbft.NodeInfo{
+			{
+				AccountAddress: "0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013",
+				P2PNodeID:      "16Uiu2HAmJ38LwfY6pfgDWNvk3ypjcpEMSePNTE6Ma2NCLqjbZJSF",
+			},
 		},
 	})
 	assert.Nil(t, err)

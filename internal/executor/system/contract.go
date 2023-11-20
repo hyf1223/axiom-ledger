@@ -64,7 +64,7 @@ func InitGenesisData(genesis *repo.Genesis, lg ledger.StateLedger) error {
 	if err := governance.InitCouncilMembers(lg, genesis.Admins, genesis.Balance); err != nil {
 		return err
 	}
-	if err := governance.InitNodeMembers(lg, genesis.Nodes); err != nil {
+	if err := governance.InitNodeMembers(lg, genesis.Nodes, genesis.EpochInfo); err != nil {
 		return err
 	}
 

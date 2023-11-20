@@ -203,10 +203,8 @@ type Admin struct {
 }
 
 type Node struct {
-	Name    string `mapstructure:"name" toml:"name"`
-	NodeId  string `mapstructure:"node_id" toml:"node_id"`
-	Address string `mapstructure:"address" toml:"address"`
-	ID      uint64 `mapstructure:"id" toml:"id"`
+	Name   string `mapstructure:"name" toml:"name"`
+	NodeId string `mapstructure:"node_id" toml:"node_id"`
 }
 
 type Sync struct {
@@ -259,6 +257,23 @@ func (c *Config) Bytes() ([]byte, error) {
 	}
 
 	return ret, nil
+}
+
+func GenesisNodeInfo(epochEnable bool) []*Node {
+	var nodes []*Node
+	var sliceLength int
+	if epochEnable {
+		sliceLength = len(DefaultNodeAddrs)
+	} else {
+		sliceLength = 4
+	}
+	nodes = lo.Map(DefaultNodeAddrs[:sliceLength], func(item string, idx int) *Node {
+		return &Node{
+			Name:   DefaultNodeNames[idx],
+			NodeId: defaultNodeIDs[idx],
+		}
+	})
+	return nodes
 }
 
 func GenesisEpochInfo(epochEnable bool) *rbft.EpochInfo {
@@ -421,14 +436,7 @@ func DefaultConfig(epochEnable bool) *Config {
 					Name:    DefaultAdminNames[idx],
 				}
 			}),
-			Nodes: lo.Map(DefaultNodeAddrs[0:4], func(item string, idx int) *Node {
-				return &Node{
-					Name:    DefaultNodeNames[idx],
-					NodeId:  defaultNodeIDs[idx],
-					Address: DefaultNodeAddrs[idx],
-					ID:      uint64(idx + 1),
-				}
-			}),
+			Nodes:                  GenesisNodeInfo(epochEnable),
 			InitWhiteListProviders: DefaultNodeAddrs,
 			Accounts: []string{
 				"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
