@@ -13,6 +13,7 @@ import (
 	"github.com/axiomesh/axiom-ledger/internal/executor/system/base"
 	"github.com/axiomesh/axiom-ledger/internal/executor/system/common"
 	"github.com/axiomesh/axiom-ledger/internal/ledger"
+	"github.com/axiomesh/axiom-ledger/pkg/repo"
 	vm "github.com/axiomesh/eth-kit/evm"
 )
 
@@ -60,10 +61,10 @@ type Node struct {
 }
 
 type NodeMember struct {
-	Name    string
-	NodeId  string
-	Address string
-	ID      uint64
+	Name    string `mapstructure:"name" toml:"name"`
+	NodeId  string `mapstructure:"node_id" toml:"node_id"`
+	Address string `mapstructure:"address" toml:"address"`
+	ID      uint64 `mapstructure:"id" toml:"id"`
 }
 
 type NodeVoteArgs struct {
@@ -192,33 +193,47 @@ func (nm *NodeManager) propose(addr ethcommon.Address, args *ProposalArgs) (*vm.
 		return result, nil
 	}
 
+	result.ReturnData, result.Err = nm.proposeNodeAddRemove(addr, args)
+
+	return result, nil
+}
+
+func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *ProposalArgs) ([]byte, error) {
+
 	nodeArgs, err := nm.getNodeProposalArgs(args)
 	if err != nil {
 		return nil, err
 	}
 
-	result.ReturnData, result.Err = nm.proposeNodeAddRemove(addr, nodeArgs)
+	isExist, council := CheckInCouncil(nm.councilAccount, addr.String())
+	if args.ProposalType == uint8(NodeAdd) {
+		// check addr if is exist in council
+		if !isExist {
+			return nil, ErrNotFoundCouncilMember
+		}
+	} else {
+		//check whether the from address and node address are consistent
+		for _, node := range nodeArgs.NodeExtraArgs.Nodes {
+			if addr.String() != node.Address {
+				//If the addresses are inconsistent, verify whether the address that initiated the proposal is a member of the committee.
+				if !isExist {
+					return nil, ErrNotFoundCouncilMember
+				}
+			}
+		}
 
-	return result, nil
-}
+	}
 
-func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *NodeProposalArgs) ([]byte, error) {
-	baseProposal, err := nm.gov.Propose(&addr, ProposalType(args.ProposalType), args.Title, args.Desc, args.BlockNumber, nm.lastHeight)
+	baseProposal, err := nm.gov.Propose(&addr, ProposalType(nodeArgs.ProposalType), nodeArgs.Title, nodeArgs.Desc, nodeArgs.BlockNumber, nm.lastHeight)
 	if err != nil {
 		return nil, err
 	}
 
 	// check proposal has repeated nodes
-	if len(lo.Uniq[string](lo.Map[*NodeMember, string](args.Nodes, func(item *NodeMember, index int) string {
+	if len(lo.Uniq[string](lo.Map[*NodeMember, string](nodeArgs.Nodes, func(item *NodeMember, index int) string {
 		return item.NodeId
-	}))) != len(args.Nodes) {
+	}))) != len(nodeArgs.Nodes) {
 		return nil, ErrRepeatedNodeID
-	}
-
-	// check addr if is exist in council
-	isExist, council := CheckInCouncil(nm.councilAccount, addr.String())
-	if !isExist {
-		return nil, ErrNotFoundCouncilMember
 	}
 
 	// set proposal id
@@ -231,7 +246,8 @@ func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *NodePr
 		return nil, err
 	}
 	proposal.ID = id
-	proposal.Nodes = args.Nodes
+	proposal.Nodes = nodeArgs.Nodes
+
 	proposal.TotalVotes = lo.Sum[uint64](lo.Map[*CouncilMember, uint64](council.Members, func(item *CouncilMember, index int) uint64 {
 		return item.Weight
 	}))
@@ -401,7 +417,7 @@ func (nm *NodeManager) voteNodeAddRemove(user ethcommon.Address, proposal *NodeP
 			})
 
 			for _, node := range proposal.Nodes {
-				err = base.RemoveNode(nm.stateLedger, node.ID)
+				err = base.RemoveNodeByP2PNodeID(nm.stateLedger, node.NodeId)
 				if err != nil {
 					return nil, err
 				}
@@ -496,15 +512,49 @@ func (nm *NodeManager) checkAndUpdateState(lastHeight uint64) {
 	}
 }
 
-func InitNodeMembers(lg ledger.StateLedger, members []*NodeMember) error {
+func InitNodeMembers(lg ledger.StateLedger, members []*repo.Node, epochInfo *rbft.EpochInfo) error {
 	// read member config, write to ViewLedger
-	c, err := json.Marshal(members)
+	nodeMember := mergeData(members, epochInfo)
+	c, err := json.Marshal(nodeMember)
 	if err != nil {
 		return err
 	}
 	account := lg.GetOrCreateAccount(types.NewAddressByStr(common.NodeManagerContractAddr))
 	account.SetState([]byte(NodeMembersKey), c)
 	return nil
+}
+
+func mergeData(members []*repo.Node, epochInfo *rbft.EpochInfo) []*NodeMember {
+	var result []*NodeMember
+	nodeMap := make(map[string]*repo.Node)
+	for _, node := range members {
+		nodeMap[node.NodeId] = node
+	}
+
+	// traverse epochInfo and merge data
+	for _, nodeInfo := range epochInfo.ValidatorSet {
+		if member, ok := nodeMap[nodeInfo.P2PNodeID]; ok {
+			nodeMember := NodeMember{
+				Name:    member.Name,
+				NodeId:  member.NodeId,
+				Address: nodeInfo.AccountAddress,
+				ID:      nodeInfo.ID,
+			}
+			result = append(result, &nodeMember)
+		}
+	}
+	for _, nodeInfo := range epochInfo.CandidateSet {
+		if member, ok := nodeMap[nodeInfo.P2PNodeID]; ok {
+			nodeMember := NodeMember{
+				Name:    member.Name,
+				NodeId:  member.NodeId,
+				Address: nodeInfo.AccountAddress,
+				ID:      nodeInfo.ID,
+			}
+			result = append(result, &nodeMember)
+		}
+	}
+	return result
 }
 
 func GetNodeMembers(lg ledger.StateLedger) ([]*NodeMember, error) {

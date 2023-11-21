@@ -23,6 +23,7 @@ type Config struct {
 	Config                                      *repo.ConsensusConfig
 	Logger                                      logrus.FieldLogger
 	ConsensusType                               string
+	ConsensusStorageType                        string
 	PrivKey                                     *ecdsa.PrivateKey
 	SelfAccountAddress                          string
 	GenesisEpochInfo                            *rbft.EpochInfo
@@ -64,6 +65,12 @@ func WithGenesisEpochInfo(genesisEpochInfo *rbft.EpochInfo) Option {
 func WithConsensusType(typ string) Option {
 	return func(config *Config) {
 		config.ConsensusType = typ
+	}
+}
+
+func WithConsensusStorageType(consensusStorageType string) Option {
+	return func(config *Config) {
+		config.ConsensusStorageType = consensusStorageType
 	}
 }
 

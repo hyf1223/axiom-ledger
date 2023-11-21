@@ -471,9 +471,9 @@ func (n *Node) Quorum() uint64 {
 }
 
 func (n *Node) checkQuorum() error {
-	n.logger.Infof("=======Quorum = %d, connected peers = %d", n.Quorum(), n.network.CountConnectedPeers()+1)
-	if n.network.CountConnectedPeers()+1 < n.Quorum() {
-		return errors.New("the number of connected Peers don't reach Quorum")
+	n.logger.Infof("=======Quorum = %d, connected validators = %d", n.Quorum(), n.network.CountConnectedValidators()+1)
+	if n.network.CountConnectedValidators()+1 < n.Quorum() {
+		return errors.New("the number of connected validators don't reach Quorum")
 	}
 	return nil
 }

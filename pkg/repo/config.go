@@ -189,6 +189,7 @@ type Genesis struct {
 	InitWhiteListProviders []string        `mapstructure:"init_white_list_providers" toml:"init_white_list_providers"`
 	Accounts               []string        `mapstructure:"accounts" toml:"accounts"`
 	EpochInfo              *rbft.EpochInfo `mapstructure:"epoch_info" toml:"epoch_info"`
+	Nodes                  []*Node         `mapstructure:"nodes" toml:"nodes"`
 }
 
 type Access struct {
@@ -201,6 +202,11 @@ type Admin struct {
 	Name    string `mapstructure:"name" toml:"name"`
 }
 
+type Node struct {
+	Name   string `mapstructure:"name" toml:"name"`
+	NodeId string `mapstructure:"node_id" toml:"node_id"`
+}
+
 type Sync struct {
 	RequesterRetryTimeout Duration `mapstructure:"requester_retry_timeout" toml:"requester_retry_timeout"`
 	WaitStateTimeout      Duration `mapstructure:"wait_state_timeout" toml:"wait_state_timeout"`
@@ -209,7 +215,8 @@ type Sync struct {
 }
 
 type Consensus struct {
-	Type string `mapstructure:"type" toml:"type"`
+	Type        string `mapstructure:"type" toml:"type"`
+	StorageType string `mapstructure:"storage_type" toml:"storage_type"`
 }
 
 type Storage struct {
@@ -250,6 +257,23 @@ func (c *Config) Bytes() ([]byte, error) {
 	}
 
 	return ret, nil
+}
+
+func GenesisNodeInfo(epochEnable bool) []*Node {
+	var nodes []*Node
+	var sliceLength int
+	if epochEnable {
+		sliceLength = len(DefaultNodeAddrs)
+	} else {
+		sliceLength = 4
+	}
+	nodes = lo.Map(DefaultNodeAddrs[:sliceLength], func(item string, idx int) *Node {
+		return &Node{
+			Name:   DefaultNodeNames[idx],
+			NodeId: defaultNodeIDs[idx],
+		}
+	})
+	return nodes
 }
 
 func GenesisEpochInfo(epochEnable bool) *rbft.EpochInfo {
@@ -381,7 +405,8 @@ func DefaultConfig(epochEnable bool) *Config {
 			ConcurrencyLimit:      1000,
 		},
 		Consensus: Consensus{
-			Type: ConsensusTypeRbft,
+			Type:        ConsensusTypeRbft,
+			StorageType: ConsensusStorageTypeMinifile,
 		},
 		Storage: Storage{
 			KvType:      KVStorageTypePebble,
@@ -408,9 +433,10 @@ func DefaultConfig(epochEnable bool) *Config {
 				return &Admin{
 					Address: item,
 					Weight:  1,
-					Name:    DefaultNodeNames[idx],
+					Name:    DefaultAdminNames[idx],
 				}
 			}),
+			Nodes:                  GenesisNodeInfo(epochEnable),
 			InitWhiteListProviders: DefaultNodeAddrs,
 			Accounts: []string{
 				"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",

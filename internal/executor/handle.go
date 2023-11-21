@@ -383,7 +383,8 @@ func (exec *BlockExecutor) calcReceiptMerkleRoot(receipts []*types.Receipt) (*ty
 
 func calcMerkleRoot(contents []merkletree.Content) (*types.Hash, error) {
 	if len(contents) == 0 {
-		return &types.Hash{}, nil
+		// compatible with Ethereum
+		return types.NewHashByStr("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"), nil
 	}
 
 	tree, err := merkletree.NewTree(contents)

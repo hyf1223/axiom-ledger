@@ -82,7 +82,8 @@ func AriesConfig() *Config {
 			ConcurrencyLimit:      1000,
 		},
 		Consensus: Consensus{
-			Type: ConsensusTypeRbft,
+			Type:        ConsensusTypeRbft,
+			StorageType: ConsensusStorageTypeMinifile,
 		},
 		Storage: Storage{
 			KvType: KVStorageTypeLeveldb,
