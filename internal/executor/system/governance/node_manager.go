@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/samber/lo"
@@ -199,7 +200,6 @@ func (nm *NodeManager) propose(addr ethcommon.Address, args *ProposalArgs) (*vm.
 }
 
 func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *ProposalArgs) ([]byte, error) {
-
 	nodeArgs, err := nm.getNodeProposalArgs(args)
 	if err != nil {
 		return nil, err
@@ -212,16 +212,15 @@ func (nm *NodeManager) proposeNodeAddRemove(addr ethcommon.Address, args *Propos
 			return nil, ErrNotFoundCouncilMember
 		}
 	} else {
-		//check whether the from address and node address are consistent
+		// check whether the from address and node address are consistent
 		for _, node := range nodeArgs.NodeExtraArgs.Nodes {
 			if addr.String() != node.Address {
-				//If the addresses are inconsistent, verify whether the address that initiated the proposal is a member of the committee.
+				// If the addresses are inconsistent, verify whether the address that initiated the proposal is a member of the committee.
 				if !isExist {
 					return nil, ErrNotFoundCouncilMember
 				}
 			}
 		}
-
 	}
 
 	baseProposal, err := nm.gov.Propose(&addr, ProposalType(nodeArgs.ProposalType), nodeArgs.Title, nodeArgs.Desc, nodeArgs.BlockNumber, nm.lastHeight)
@@ -512,10 +511,10 @@ func (nm *NodeManager) checkAndUpdateState(lastHeight uint64) {
 	}
 }
 
-func InitNodeMembers(lg ledger.StateLedger, members []*repo.Node, epochInfo *rbft.EpochInfo) error {
+func InitNodeMembers(lg ledger.StateLedger, members []*repo.NodeName, epochInfo *rbft.EpochInfo) error {
 	// read member config, write to ViewLedger
-	nodeMember := mergeData(members, epochInfo)
-	c, err := json.Marshal(nodeMember)
+	nodeMembers := mergeData(members, epochInfo)
+	c, err := json.Marshal(nodeMembers)
 	if err != nil {
 		return err
 	}
@@ -524,36 +523,33 @@ func InitNodeMembers(lg ledger.StateLedger, members []*repo.Node, epochInfo *rbf
 	return nil
 }
 
-func mergeData(members []*repo.Node, epochInfo *rbft.EpochInfo) []*NodeMember {
+func mergeData(members []*repo.NodeName, epochInfo *rbft.EpochInfo) []*NodeMember {
 	var result []*NodeMember
-	nodeMap := make(map[string]*repo.Node)
+	nodeMap := make(map[uint64]*repo.NodeName)
 	for _, node := range members {
-		nodeMap[node.NodeId] = node
+		nodeMap[node.ID] = node
 	}
 
 	// traverse epochInfo and merge data
-	for _, nodeInfo := range epochInfo.ValidatorSet {
-		if member, ok := nodeMap[nodeInfo.P2PNodeID]; ok {
+	fillNodeInfo := func(nodes []rbft.NodeInfo) {
+		for _, nodeInfo := range nodes {
 			nodeMember := NodeMember{
-				Name:    member.Name,
-				NodeId:  member.NodeId,
+				NodeId:  nodeInfo.P2PNodeID,
 				Address: nodeInfo.AccountAddress,
 				ID:      nodeInfo.ID,
+			}
+			if member, ok := nodeMap[nodeInfo.ID]; ok {
+				nodeMember.Name = member.Name
 			}
 			result = append(result, &nodeMember)
 		}
 	}
-	for _, nodeInfo := range epochInfo.CandidateSet {
-		if member, ok := nodeMap[nodeInfo.P2PNodeID]; ok {
-			nodeMember := NodeMember{
-				Name:    member.Name,
-				NodeId:  member.NodeId,
-				Address: nodeInfo.AccountAddress,
-				ID:      nodeInfo.ID,
-			}
-			result = append(result, &nodeMember)
-		}
-	}
+	fillNodeInfo(epochInfo.ValidatorSet)
+	fillNodeInfo(epochInfo.CandidateSet)
+	fillNodeInfo(epochInfo.DataSyncerSet)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
 
