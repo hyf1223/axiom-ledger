@@ -126,7 +126,7 @@ func (p *txPoolImpl[T, Constraint]) processEvent(event txPoolEvent) []txPoolEven
 }
 
 func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []txPoolEvent {
-	//p.logger.Debugf("start dispatch add txs event:%s", addTxsEventToStr[event.EventType])
+	p.logger.Debugf("start dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	var (
 		fullErr                      error
 		err                          error
@@ -143,7 +143,7 @@ func (p *txPoolImpl[T, Constraint]) dispatchAddTxsEvent(event *addTxsEvent) []tx
 	metricsPrefix := "addTxs_"
 	defer func() {
 		traceProcessEvent(fmt.Sprintf("%s%s", metricsPrefix, addTxsEventToStr[event.EventType]), time.Since(start))
-		//p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch add txs event:%s", addTxsEventToStr[event.EventType])
+		p.logger.WithFields(logrus.Fields{"cost": time.Since(start)}).Debugf("end dispatch add txs event:%s", addTxsEventToStr[event.EventType])
 	}()
 	switch event.EventType {
 	case localTxEvent:
@@ -602,8 +602,9 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() int {
 	now := time.Now().UnixNano()
 	removedTxs := make(map[string][]*internalTransaction[T, Constraint])
 	var (
-		count int
-		index int
+		count          int
+		index          int
+		revertAccounts = make(map[string]uint64)
 	)
 	p.txStore.removeTTLIndex.data.Ascend(func(a btree.Item) bool {
 		index++
@@ -615,29 +616,33 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() int {
 		}
 		if now-poolTx.arrivedTime > p.toleranceRemoveTime.Nanoseconds() {
 			// for those batched txs, we don't need to removedTxs temporarily.
-			if _, ok := p.txStore.batchedTxs[txPointer{account: removeKey.account, nonce: removeKey.nonce}]; ok {
+			pointer := &txPointer{account: removeKey.account, nonce: removeKey.nonce}
+			if _, ok := p.txStore.batchedTxs[*pointer]; ok {
 				p.logger.Debugf("find tx[account: %s, nonce:%d] from batchedTxs, ignore remove request",
 					removeKey.account, removeKey.nonce)
 				return true
 			}
 
 			orderedKey := &orderedIndexKey{time: poolTx.getRawTimestamp(), account: poolTx.getAccount(), nonce: poolTx.getNonce()}
-			if tx := p.txStore.priorityIndex.data.Get(orderedKey); tx != nil {
-				p.fillRemoveTxs(orderedKey, poolTx, removedTxs)
-				count++
-				// remove txHashMap
-				txHash := poolTx.getHash()
-				p.txStore.deletePoolTx(txHash)
-				return true
+
+			deleteTx := func(index *btreeIndex[T, Constraint]) bool {
+				if tx := index.data.Get(orderedKey); tx != nil {
+					p.fillRemoveTxs(orderedKey, poolTx, removedTxs)
+					count++
+					// remove txHashMap
+					txHash := poolTx.getHash()
+					p.txStore.deletePoolTx(txHash)
+					return true
+				}
+				return false
 			}
 
-			if tx := p.txStore.parkingLotIndex.data.Get(orderedKey); tx != nil {
-				p.fillRemoveTxs(orderedKey, poolTx, removedTxs)
-				count++
-				// remove txHashMap
-				txHash := poolTx.getHash()
-				p.txStore.deletePoolTx(txHash)
+			// if remove ready txs, we need revert pending nonce
+			if deleteTx(p.txStore.priorityIndex) {
+				p.revertPendingNonce(pointer, revertAccounts)
 				return true
+			} else {
+				return deleteTx(p.txStore.parkingLotIndex)
 			}
 		}
 		return true
@@ -647,6 +652,10 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveTimeoutTxs() int {
 			// remove index from removedTxs
 			_ = p.cleanTxsByAccount(account, list, txs)
 		}
+	}
+
+	for account, pendingNonce := range revertAccounts {
+		p.logger.Debugf("Account %s revert its pendingNonce to %d", account, pendingNonce)
 	}
 
 	// when remove priorityIndex, we need to decrease priorityNonBatchSize
@@ -985,18 +994,7 @@ func (p *txPoolImpl[T, Constraint]) handleRemoveBatches(batchHashList []string) 
 				p.logger.Warningf("Remove transaction %s failed, Can't find it from txHashMap", txHash)
 				continue
 			}
-			preCommitNonce := p.txStore.nonceCache.getCommitNonce(pointer.account)
-			// next wanted nonce
-			newCommitNonce := pointer.nonce + 1
-			if preCommitNonce < newCommitNonce {
-				p.txStore.nonceCache.setCommitNonce(pointer.account, newCommitNonce)
-				// Note!!! updating pendingNonce to commitNonce for the restart node
-				pendingNonce := p.txStore.nonceCache.getPendingNonce(pointer.account)
-				if pendingNonce < newCommitNonce {
-					updateAccounts[pointer.account] = newCommitNonce
-					p.txStore.nonceCache.setPendingNonce(pointer.account, newCommitNonce)
-				}
-			}
+			p.updateNonceCache(pointer, updateAccounts)
 			p.txStore.deletePoolTx(txHash)
 			delete(p.txStore.batchedTxs, *pointer)
 			dirtyAccounts[pointer.account] = true
@@ -1093,6 +1091,16 @@ func (p *txPoolImpl[T, Constraint]) cleanTxsByAccount(account string, list *txSo
 	}
 
 	return nil
+}
+
+func (p *txPoolImpl[T, Constraint]) revertPendingNonce(pointer *txPointer, updateAccounts map[string]uint64) {
+	pendingNonce := p.txStore.nonceCache.getPendingNonce(pointer.account)
+	// because we remove the tx from the txpool, so we need revert the pendingNonce to pointer.nonce
+	// it means we want next nonce is pointer.nonce
+	if pendingNonce > pointer.nonce {
+		p.txStore.nonceCache.setPendingNonce(pointer.account, pointer.nonce)
+		updateAccounts[pointer.account] = pointer.nonce
+	}
 }
 
 func (p *txPoolImpl[T, Constraint]) updateNonceCache(pointer *txPointer, updateAccounts map[string]uint64) {
