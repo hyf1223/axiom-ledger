@@ -1,14 +1,18 @@
 package solo
 
 import (
+	"context"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/axiomesh/axiom-kit/txpool"
+
+	rbft "github.com/axiomesh/axiom-bft"
 
 	"github.com/axiomesh/axiom-kit/log"
 	"github.com/axiomesh/axiom-kit/types"
@@ -43,6 +47,12 @@ func TestNode_Start(t *testing.T) {
 				GasPrice: big.NewInt(0),
 			}
 		}),
+		common.WithTxPool(mockTxPool(t)),
+		common.WithGetCurrentEpochInfoFromEpochMgrContractFunc(func() (*rbft.EpochInfo, error) {
+			return &rbft.EpochInfo{ConsensusParams: rbft.ConsensusParams{
+				EnableTimedGenEmptyBlock: false,
+			}}, nil
+		}),
 	)
 	require.Nil(t, err)
 
@@ -70,19 +80,21 @@ func TestNode_Start(t *testing.T) {
 		}
 	}
 
-	txSubscribeCh := make(chan []*types.Transaction)
+	txSubscribeCh := make(chan []*types.Transaction, 1)
 	sub := solo.SubscribeTxEvent(txSubscribeCh)
 	defer sub.Unsubscribe()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mockAddTx(solo, ctx)
+
 	err = solo.Prepare(tx)
 	require.Nil(t, err)
-	select {
-	case subTxs := <-txSubscribeCh:
-		require.EqualValues(t, 1, len(subTxs))
-		require.EqualValues(t, tx, subTxs[0])
-	case <-time.After(50 * time.Millisecond):
-		require.Nil(t, errors.New("not received subscribe tx"))
-	}
+	subTxs := <-txSubscribeCh
+	require.EqualValues(t, 1, len(subTxs))
+	require.EqualValues(t, tx, subTxs[0])
+
+	solo.notifyGenerateBatch(txpool.GenBatchSizeEvent)
 
 	commitEvent := <-solo.Commit()
 	require.Equal(t, uint64(2), commitEvent.Block.BlockHeader.Number)
@@ -93,47 +105,6 @@ func TestNode_Start(t *testing.T) {
 	txHashList = append(txHashList, tx.GetHash())
 	solo.ReportState(commitEvent.Block.Height(), blockHash, txHashList, nil, false)
 	solo.Stop()
-}
-
-func TestGetPendingTxCountByAccount(t *testing.T) {
-	ast := assert.New(t)
-	node, err := mockSoloNode(t, false)
-	ast.Nil(err)
-	err = node.Start()
-	ast.Nil(err)
-	defer node.Stop()
-
-	nonce := node.GetPendingTxCountByAccount("account1")
-	ast.Equal(uint64(0), nonce)
-
-	tx, err := types.GenerateEmptyTransactionAndSigner()
-	require.Nil(t, err)
-	ast.Equal(uint64(0), node.GetPendingTxCountByAccount(tx.RbftGetFrom()))
-
-	err = node.Prepare(tx)
-	ast.Nil(err)
-	ast.Equal(uint64(1), node.GetPendingTxCountByAccount(tx.RbftGetFrom()))
-}
-
-func TestGetPendingTxByHash(t *testing.T) {
-	ast := assert.New(t)
-	node, err := mockSoloNode(t, false)
-	ast.Nil(err)
-	err = node.Start()
-	ast.Nil(err)
-	defer node.Stop()
-
-	tx, err := types.GenerateEmptyTransactionAndSigner()
-	require.Nil(t, err)
-
-	err = node.Prepare(tx)
-	ast.Nil(err)
-	tx1 := node.GetPendingTxByHash(tx.GetHash())
-	ast.NotNil(tx1.GetPayload())
-	ast.Equal(tx.GetPayload(), tx1.GetPayload())
-
-	tx2 := node.GetPendingTxByHash(types.NewHashByStr("0x123"))
-	ast.Nil(tx2)
 }
 
 func TestTimedBlock(t *testing.T) {
@@ -172,9 +143,19 @@ func TestNode_ReportState(t *testing.T) {
 
 	txList, signer := prepareMultiTx(t, 10)
 	ast.Equal(10, len(txList))
+
+	txSubscribeCh := make(chan []*types.Transaction, 1)
+	sub := node.SubscribeTxEvent(txSubscribeCh)
+	defer sub.Unsubscribe()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mockAddTx(node, ctx)
+
 	for _, tx := range txList {
 		err = node.Prepare(tx)
 		ast.Nil(err)
+		<-txSubscribeCh
 		// sleep to make sure the tx is generated to the batch
 		time.Sleep(batchTimeout + 10*time.Millisecond)
 	}
@@ -186,17 +167,9 @@ func TestNode_ReportState(t *testing.T) {
 		ast.Nil(err)
 		err = node.Prepare(tx11)
 		ast.NotNil(err)
+		<-txSubscribeCh
 		ast.Contains(err.Error(), ErrPoolFull)
-		time.Sleep(100 * time.Millisecond)
-		ast.True(node.isPoolFull())
 		ast.Equal(10, len(node.batchDigestM), "the pool should be full, tx11 is not add in txpool successfully")
-
-		tx12, err := types.GenerateTransactionWithSigner(uint64(12),
-			types.NewAddressByStr("0xdAC17F958D2ee523a2206206994597C13D831ec7"), big.NewInt(0), nil, signer)
-
-		err = node.Prepare(tx12)
-		ast.NotNil(err)
-		ast.Contains(err.Error(), ErrPoolFull)
 	})
 
 	ast.NotNil(node.txpool.GetPendingTxByHash(txList[9].RbftGetTxHash()), "tx10 should be in txpool")
@@ -233,8 +206,18 @@ func TestNode_RemoveTxFromPool(t *testing.T) {
 	// remove the first tx
 	txList = txList[1:]
 	ast.Equal(9, len(txList))
+
+	txSubscribeCh := make(chan []*types.Transaction, 1)
+	sub := node.SubscribeTxEvent(txSubscribeCh)
+	defer sub.Unsubscribe()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mockAddTx(node, ctx)
+
 	for _, tx := range txList {
 		err = node.Prepare(tx)
+		<-txSubscribeCh
 		ast.Nil(err)
 	}
 	// lack nonce 0, so the txs will not be generated to the batch
@@ -244,26 +227,6 @@ func TestNode_RemoveTxFromPool(t *testing.T) {
 	time.Sleep(2*removeTxTimeout + 500*time.Millisecond)
 
 	ast.Nil(node.txpool.GetPendingTxByHash(txList[8].RbftGetTxHash()), "tx9 should be removed from txpool")
-}
-
-func TestNode_GetTotalPendingTxCount(t *testing.T) {
-	ast := assert.New(t)
-	node, err := mockSoloNode(t, false)
-	ast.Nil(err)
-
-	err = node.Start()
-	ast.Nil(err)
-	defer node.Stop()
-
-	txList, _ := prepareMultiTx(t, 10)
-	// remove the first tx, ensure txpool don't generated a batch
-	txList = txList[1:]
-	ast.Equal(9, len(txList))
-	for _, tx := range txList {
-		err = node.Prepare(tx)
-		ast.Nil(err)
-	}
-	ast.Equal(uint64(9), node.GetTotalPendingTxCount())
 }
 
 func TestNode_GetLowWatermark(t *testing.T) {
@@ -279,35 +242,17 @@ func TestNode_GetLowWatermark(t *testing.T) {
 
 	tx, err := types.GenerateEmptyTransactionAndSigner()
 	require.Nil(t, err)
+	txSubscribeCh := make(chan []*types.Transaction, 1)
+	sub := node.SubscribeTxEvent(txSubscribeCh)
+	defer sub.Unsubscribe()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mockAddTx(node, ctx)
+
 	err = node.Prepare(tx)
+	<-txSubscribeCh
 	ast.Nil(err)
 	commitEvent := <-node.commitC
 	ast.NotNil(commitEvent)
 	ast.Equal(commitEvent.Block.Height(), node.GetLowWatermark())
-}
-
-func TestNode_GetAccountPoolMeta(t *testing.T) {
-	ast := assert.New(t)
-	node, err := mockSoloNode(t, false)
-	ast.Nil(err)
-
-	err = node.Start()
-	ast.Nil(err)
-	defer node.Stop()
-
-	accountPoolMeta := node.GetAccountPoolMeta("", true)
-	ast.Equal(uint64(0), accountPoolMeta.CommitNonce)
-}
-
-func TestNode_GetPoolMeta(t *testing.T) {
-	ast := assert.New(t)
-	node, err := mockSoloNode(t, false)
-	ast.Nil(err)
-
-	err = node.Start()
-	ast.Nil(err)
-	defer node.Stop()
-
-	poolMeta := node.GetPoolMeta(true)
-	ast.Equal(uint64(0), poolMeta.TxCount)
 }

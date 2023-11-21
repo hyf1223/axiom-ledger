@@ -15,7 +15,6 @@ import (
 
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-bft/common/consensus"
-	"github.com/axiomesh/axiom-bft/txpool"
 	rbfttypes "github.com/axiomesh/axiom-bft/types"
 	"github.com/axiomesh/axiom-kit/types"
 	"github.com/axiomesh/axiom-kit/types/pb"
@@ -58,7 +57,7 @@ type Node struct {
 }
 
 func NewNode(config *common.Config) (*Node, error) {
-	rbftConfig, txpoolConfig, err := generateRbftConfig(config)
+	rbftConfig, err := generateRbftConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +77,7 @@ func NewNode(config *common.Config) (*Node, error) {
 		return nil, err
 	}
 
-	mp := txpool.NewTxPool[types.Transaction, *types.Transaction](txpoolConfig)
-	n, err := rbft.NewNode[types.Transaction, *types.Transaction](rbftConfig, rbftAdaptor, mp)
+	n, err := rbft.NewNode[types.Transaction, *types.Transaction](rbftConfig, rbftAdaptor, config.TxPool)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -165,7 +163,7 @@ func (n *Node) Start() error {
 	go n.txPreCheck.Start()
 	go n.txCache.ListenEvent()
 
-	go n.listenValidTxs()
+	//go n.listenValidTxs()
 	go n.listenNewTxToSubmit()
 	go n.listenExecutedBlockToReport()
 	go n.listenBatchMemTxsToBroadcast()
@@ -174,28 +172,6 @@ func (n *Node) Start() error {
 
 	n.logger.Info("=====Consensus started=========")
 	return n.n.Start()
-}
-
-func (n *Node) listenValidTxs() {
-	for {
-		select {
-		case <-n.ctx.Done():
-			n.logger.Info("receive stop ctx, exist listenValidTxs")
-			return
-		case validTxs := <-n.txPreCheck.CommitValidTxs():
-			if err := n.n.Propose(validTxs.Txs, validTxs.Local); err != nil {
-				n.logger.WithField("err", err).Warn("Propose tx failed")
-			}
-
-			// post tx event to websocket
-			go n.txFeed.Send(validTxs.Txs)
-
-			// send successful response to api
-			if validTxs.Local {
-				validTxs.LocalRespCh <- &common.TxResp{Status: true}
-			}
-		}
-	}
 }
 
 func (n *Node) listenConsensusMsg() {
@@ -343,10 +319,7 @@ func (n *Node) Stop() {
 }
 
 func (n *Node) Prepare(tx *types.Transaction) error {
-	if n.n.Status().Status == rbft.PoolFull {
-		return errors.New("txpool is full, we will drop this transaction")
-	}
-
+	defer n.txFeed.Send([]*types.Transaction{tx})
 	txWithResp := &common.TxWithResp{
 		Tx:     tx,
 		RespCh: make(chan *common.TxResp),
@@ -372,6 +345,7 @@ func (n *Node) submitTxsFromRemote(txs [][]byte) {
 		requests = append(requests, tx)
 	}
 
+	n.txFeed.Send(requests)
 	ev := &common.UncheckedTxEvent{
 		EventType: common.RemoteTxEvent,
 		Event:     requests,
@@ -402,28 +376,8 @@ func (n *Node) Ready() error {
 	return nil
 }
 
-func (n *Node) GetPendingTxCountByAccount(account string) uint64 {
-	return n.n.GetPendingTxCountByAccount(account)
-}
-
-func (n *Node) GetPendingTxByHash(hash *types.Hash) *types.Transaction {
-	return n.n.GetPendingTxByHash(hash.String())
-}
-
-func (n *Node) GetTotalPendingTxCount() uint64 {
-	return n.n.GetTotalPendingTxCount()
-}
-
 func (n *Node) GetLowWatermark() uint64 {
 	return n.n.GetLowWatermark()
-}
-
-func (n *Node) GetAccountPoolMeta(account string, full bool) *common.AccountMeta {
-	return common.AccountMetaFromTxpool(n.n.GetAccountPoolMeta(account, full))
-}
-
-func (n *Node) GetPoolMeta(full bool) *common.Meta {
-	return common.MetaFromTxpool(n.n.GetPoolMeta(full))
 }
 
 func (n *Node) ReportState(height uint64, blockHash *types.Hash, txHashList []*types.Hash, ckp *consensus.Checkpoint, needRemoveTxs bool) {
