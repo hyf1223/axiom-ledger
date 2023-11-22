@@ -1,5 +1,11 @@
 package txpool
 
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
+
 func (p *txPoolImpl[T, Constraint]) setFull() {
 	p.statusMgr.On(PoolFull)
 }
@@ -22,4 +28,18 @@ func (p *txPoolImpl[T, Constraint]) setHasPendingRequest() {
 
 func (p *txPoolImpl[T, Constraint]) setNoPendingRequest() {
 	p.statusMgr.Off(HasPendingRequest)
+}
+
+func traceRejectTx(reason string) {
+	rejectTxNum.With(prometheus.Labels{"reason": reason}).Inc()
+	rejectTxNum.With(prometheus.Labels{"reason": "all"}).Inc()
+}
+func traceRemovedTx(reason string, count int) {
+	removeTxNum.With(prometheus.Labels{"reason": reason}).Add(float64(count))
+	removeTxNum.With(prometheus.Labels{"reason": "all"}).Add(float64(count))
+}
+
+func traceProcessEvent(event string, duration time.Duration) {
+	processEventDuration.With(prometheus.Labels{"event": event}).Observe(duration.Seconds())
+	processEventDuration.With(prometheus.Labels{"event": "all"}).Observe(duration.Seconds())
 }

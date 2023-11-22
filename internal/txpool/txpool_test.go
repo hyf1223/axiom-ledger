@@ -2,12 +2,18 @@ package txpool
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	rbft "github.com/axiomesh/axiom-bft"
 
 	"github.com/axiomesh/axiom-ledger/internal/components/timer"
 
@@ -1185,31 +1191,64 @@ func TestTxPoolImpl_SendMissingRequests(t *testing.T) {
 }
 
 func TestTxPoolImpl_FilterOutOfDateRequests(t *testing.T) {
-	ast := assert.New(t)
-	pool := mockTxPoolImpl[types.Transaction, *types.Transaction](t)
-	pool.toleranceTime = 1 * time.Millisecond
-	err := pool.Start()
-	ast.Nil(err)
-	defer pool.Stop()
+	t.Parallel()
+	t.Run("filter out of date requests with timeout", func(t *testing.T) {
+		ast := assert.New(t)
+		pool := mockTxPoolImpl[types.Transaction, *types.Transaction](t)
+		pool.toleranceTime = 1 * time.Millisecond
+		err := pool.Start()
+		ast.Nil(err)
+		defer pool.Stop()
 
-	s, err := types.GenerateSigner()
-	ast.Nil(err)
-	from := s.Addr.String()
-	tx0 := constructTx(s, 0)
-	err = pool.AddLocalTx(tx0)
-	ast.Nil(err)
-	poolTx := pool.txStore.getPoolTxByTxnPointer(from, 0)
-	ast.NotNil(poolTx)
-	firstTime := poolTx.lifeTime
+		s, err := types.GenerateSigner()
+		ast.Nil(err)
+		from := s.Addr.String()
+		tx0 := constructTx(s, 0)
+		err = pool.AddLocalTx(tx0)
+		ast.Nil(err)
+		poolTx := pool.txStore.getPoolTxByTxnPointer(from, 0)
+		ast.NotNil(poolTx)
+		firstTime := poolTx.lifeTime
 
-	// trigger update lifeTime
-	time.Sleep(2 * time.Millisecond)
-	tx1 := constructTx(s, 1)
-	err = pool.AddLocalTx(tx1)
-	ast.Nil(err)
-	txs := pool.FilterOutOfDateRequests()
-	ast.True(len(txs) >= 1)
-	ast.True(poolTx.lifeTime > firstTime)
+		// trigger update lifeTime
+		time.Sleep(2 * time.Millisecond)
+		tx1 := constructTx(s, 1)
+		err = pool.AddLocalTx(tx1)
+		ast.Nil(err)
+		txs := pool.FilterOutOfDateRequests(true)
+		ast.True(len(txs) >= 1)
+		ast.True(poolTx.lifeTime > firstTime)
+	})
+
+	t.Run("filter out of date requests without timeout", func(t *testing.T) {
+		ast := assert.New(t)
+		pool := mockTxPoolImpl[types.Transaction, *types.Transaction](t)
+		// ensure that not triggering timeout
+		pool.toleranceTime = 100 * time.Second
+		err := pool.Start()
+		ast.Nil(err)
+		defer pool.Stop()
+
+		s, err := types.GenerateSigner()
+		ast.Nil(err)
+		from := s.Addr.String()
+		tx0 := constructTx(s, 0)
+		err = pool.AddLocalTx(tx0)
+		ast.Nil(err)
+		poolTx := pool.txStore.getPoolTxByTxnPointer(from, 0)
+		ast.NotNil(poolTx)
+		firstTime := poolTx.lifeTime
+		// sleep a while to trigger update lifeTime
+		time.Sleep(1 * time.Millisecond)
+
+		txs := pool.FilterOutOfDateRequests(true)
+		ast.Equal(0, len(txs))
+
+		txs = pool.FilterOutOfDateRequests(false)
+		ast.Equal(1, len(txs))
+		ast.True(poolTx.lifeTime > firstTime)
+	})
+
 }
 
 func TestTxPoolImpl_RestoreOneBatch(t *testing.T) {
@@ -1425,4 +1464,188 @@ func TestTxPoolImpl_RemoveStateUpdatingTxs(t *testing.T) {
 	ast.Equal(0, len(pool.txStore.txHashMap))
 	ast.Equal(uint64(0), pool.txStore.priorityNonBatchSize)
 	ast.Equal(uint64(4), pool.txStore.nonceCache.commitNonces[from])
+}
+
+// nolint
+func TestTPSWithLocalTx(t *testing.T) {
+	t.Skip()
+	ast := assert.New(t)
+	pool := mockTxPoolImpl[types.Transaction, *types.Transaction](t)
+	pool.batchSize = 500
+
+	batchesCache := make(chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction], 10240)
+	pool.notifyGenerateBatchFn = func(typ int) {
+		go func() {
+			batch, err := pool.GenerateRequestBatch(typ)
+			ast.Nil(err)
+			ast.NotNil(batch)
+			batchesCache <- batch
+		}()
+	}
+	err := pool.Start()
+	defer pool.Stop()
+	ast.Nil(err)
+
+	round := 5000
+	thread := 100
+	total := round * thread
+
+	endCh := make(chan int64, 1)
+	go listenBatchCache(total, endCh, batchesCache, pool, t)
+
+	wg := new(sync.WaitGroup)
+	start := time.Now().UnixNano()
+	for i := 0; i < thread; i++ {
+		wg.Add(1)
+		s, err := types.GenerateSigner()
+		ast.Nil(err)
+		go func(i int, wg *sync.WaitGroup, s *types.Signer) {
+			defer wg.Done()
+			for j := 0; j < round; j++ {
+				tx := constructTx(s, uint64(j))
+				err = pool.AddLocalTx(tx)
+				ast.Nil(err)
+			}
+		}(i, wg, s)
+	}
+	wg.Wait()
+
+	end := <-endCh
+	dur := end - start
+	fmt.Printf("=========================duration: %v\n", time.Duration(dur).Seconds())
+	fmt.Printf("=========================tps: %v\n", float64(total)/time.Duration(dur).Seconds())
+}
+
+// nolint
+func TestTPSWithRemoteTxs(t *testing.T) {
+	t.Skip()
+	ast := assert.New(t)
+	pool := mockTxPoolImpl[types.Transaction, *types.Transaction](t)
+	pool.batchSize = 500
+	pool.toleranceNonceGap = 100000
+
+	batchesCache := make(chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction], 10240)
+	pool.notifyGenerateBatchFn = func(typ int) {
+		go func() {
+			batch, err := pool.GenerateRequestBatch(typ)
+			ast.Nil(err)
+			ast.NotNil(batch)
+			batchesCache <- batch
+		}()
+	}
+	err := pool.Start()
+	defer pool.Stop()
+	ast.Nil(err)
+
+	round := 5000
+	thread := 100
+	total := round * thread
+
+	endCh := make(chan int64, 1)
+	txC := &txCache{
+		RecvTxC: make(chan *types.Transaction, 10240),
+		TxSetC:  make(chan []*types.Transaction, 1024),
+		closeC:  make(chan struct{}),
+		txSet:   make([]*types.Transaction, 0),
+	}
+	go listenBatchCache(total, endCh, batchesCache, pool, t)
+	go txC.listenTxCache()
+	// !!!NOTICE!!! if modify thread, need to modify postTxs' sleep timeout
+	go txC.listenPostTxs(pool)
+
+	start := time.Now().UnixNano()
+	go prepareTx(thread, round, txC, t)
+
+	end := <-endCh
+	dur := end - start
+	fmt.Printf("=========================duration: %v\n", time.Duration(dur).Seconds())
+	fmt.Printf("=========================tps: %v\n", float64(total)/time.Duration(dur).Seconds())
+}
+
+func prepareTx(thread, round int, tc *txCache, t *testing.T) {
+	wg := new(sync.WaitGroup)
+	for i := 0; i < thread; i++ {
+		wg.Add(1)
+		s, err := types.GenerateSigner()
+		require.Nil(t, err)
+		go func(i int, wg *sync.WaitGroup, s *types.Signer) {
+			defer wg.Done()
+			for j := 0; j < round; j++ {
+				tx := constructTx(s, uint64(j))
+				tc.RecvTxC <- tx
+			}
+		}(i, wg, s)
+	}
+	wg.Wait()
+
+}
+
+type txCache struct {
+	TxSetC  chan []*types.Transaction
+	RecvTxC chan *types.Transaction
+	closeC  chan struct{}
+	txSet   []*types.Transaction
+}
+
+func (tc *txCache) listenTxCache() {
+	for {
+		select {
+		case <-tc.closeC:
+			return
+		case tx := <-tc.RecvTxC:
+			tc.txSet = append(tc.txSet, tx)
+			if uint64(len(tc.txSet)) >= 50 {
+				dst := make([]*types.Transaction, len(tc.txSet))
+				copy(dst, tc.txSet)
+				tc.TxSetC <- dst
+				tc.txSet = make([]*types.Transaction, 0)
+			}
+		}
+	}
+}
+
+func (tc *txCache) listenPostTxs(pool *txPoolImpl[types.Transaction, *types.Transaction]) {
+	for {
+		select {
+		case <-tc.closeC:
+			return
+		case txs := <-tc.TxSetC:
+			pool.AddRemoteTxs(txs)
+			time.Sleep(3 * time.Millisecond)
+		}
+	}
+}
+func listenBatchCache(total int, endCh chan int64, cacheCh chan *txpool.RequestHashBatch[types.Transaction, *types.Transaction],
+	pool *txPoolImpl[types.Transaction, *types.Transaction], t *testing.T) {
+
+	seqNo := uint64(0)
+	for {
+		select {
+		case batch := <-cacheCh:
+			now := time.Now()
+			txList, localList, missingTxs, err := pool.GetRequestsByHashList(batch.BatchHash, batch.Timestamp, batch.TxHashList, nil)
+			require.Nil(t, err)
+			require.Equal(t, len(batch.TxHashList), len(txList))
+			require.Equal(t, len(batch.TxHashList), len(localList))
+			require.Equal(t, 0, len(missingTxs))
+
+			newBatch := &rbft.RequestBatch[types.Transaction, *types.Transaction]{
+				RequestHashList: batch.TxHashList,
+				RequestList:     txList,
+				Timestamp:       batch.Timestamp,
+				SeqNo:           atomic.AddUint64(&seqNo, 1),
+				LocalList:       localList,
+				BatchHash:       batch.BatchHash,
+				Proposer:        1,
+			}
+			fmt.Printf("GetRequestsByHashList: %d, cost: %v\n", newBatch.SeqNo, time.Since(now))
+
+			pool.RemoveBatches([]string{newBatch.BatchHash})
+			if newBatch.SeqNo >= uint64(total)/pool.batchSize {
+				end := newBatch.Timestamp
+				endCh <- end
+			}
+			fmt.Printf("remove batch: %d, cost: %v\n", newBatch.SeqNo, time.Since(now))
+		}
+	}
 }

@@ -42,10 +42,11 @@ func NewMockTxPoolConfig() Config {
 	log := log2.NewWithModule("txpool")
 	log.Logger.SetLevel(logrus.DebugLevel)
 	poolConfig := Config{
-		BatchSize:     DefaultTestBatchSize,
-		PoolSize:      DefaultPoolSize,
-		Logger:        log,
-		ToleranceTime: DefaultToleranceTime,
+		BatchSize:             DefaultTestBatchSize,
+		PoolSize:              DefaultPoolSize,
+		Logger:                log,
+		ToleranceTime:         DefaultToleranceTime,
+		CleanEmptyAccountTime: DefaultCleanEmptyAccountTime,
 		GetAccountNonce: func(address string) uint64 {
 			return 0
 		},

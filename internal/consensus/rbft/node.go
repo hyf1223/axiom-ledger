@@ -13,6 +13,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 
+	"github.com/axiomesh/axiom-kit/txpool"
+
 	rbft "github.com/axiomesh/axiom-bft"
 	"github.com/axiomesh/axiom-bft/common/consensus"
 	rbfttypes "github.com/axiomesh/axiom-bft/types"
@@ -39,6 +41,7 @@ func init() {
 
 type Node struct {
 	config                 *common.Config
+	txpool                 txpool.TxPool[types.Transaction, *types.Transaction]
 	n                      rbft.Node[types.Transaction, *types.Transaction]
 	stack                  *adaptor.RBFTAdaptor
 	logger                 logrus.FieldLogger
@@ -99,6 +102,7 @@ func NewNode(config *common.Config) (*Node, error) {
 		txCache:           txcache.NewTxCache(config.Config.TxCache.SetTimeout.ToDuration(), uint64(config.Config.TxCache.SetSize), config.Logger),
 		network:           config.Network,
 		txPreCheck:        precheck.NewTxPreCheckMgr(ctx, config),
+		txpool:            config.TxPool,
 	}, nil
 }
 
@@ -429,7 +433,7 @@ func (n *Node) ReportState(height uint64, blockHash *types.Hash, txHashList []*t
 			lo.ForEach(txHashList, func(item *types.Hash, index int) {
 				committedTxHashList[index] = item.String()
 			})
-			n.n.ReportStateUpdatingBatches(committedTxHashList)
+			n.txpool.RemoveStateUpdatingTxs(committedTxHashList)
 		}
 		return
 	}

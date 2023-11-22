@@ -21,11 +21,28 @@ func TestHandleRemoveTimeoutEvent(t *testing.T) {
 	s, err := types.GenerateSigner()
 	ast.Nil(err)
 	txs := constructTxs(s, 4)
-	pool.AddRemoteTxs(txs)
-	assert.Equal(t, uint64(4), pool.GetTotalPendingTxCount())
 
-	// sleep a while to trigger the remove timeout event
+	// retry 2 times to test account empty flag change(empty -> not empty -> empty)
+	for i := 0; i < 2; i++ {
+		pool.AddRemoteTxs(txs)
+		assert.Equal(t, uint64(4), pool.GetTotalPendingTxCount())
+
+		// sleep a while to trigger the remove timeout event
+		time.Sleep(2 * time.Millisecond)
+		pool.handleRemoveTimeout(timer.RemoveTx)
+		assert.Equal(t, uint64(0), pool.GetTotalPendingTxCount())
+
+		assert.Equal(t, 1, len(pool.txStore.nonceCache.commitNonces))
+		assert.Equal(t, 1, len(pool.txStore.nonceCache.pendingNonces))
+		assert.Equal(t, 1, len(pool.txStore.allTxs))
+	}
+
+	pool.cleanEmptyAccountTime = 1 * time.Millisecond
+	// sleep a while to trigger the clean empty account timeout event
 	time.Sleep(2 * time.Millisecond)
-	pool.handleRemoveTimeout(timer.RemoveTx)
+	pool.handleRemoveTimeout(timer.CleanEmptyAccount)
 	assert.Equal(t, uint64(0), pool.GetTotalPendingTxCount())
+	assert.Equal(t, 0, len(pool.txStore.nonceCache.commitNonces))
+	assert.Equal(t, 0, len(pool.txStore.nonceCache.pendingNonces))
+	assert.Equal(t, 0, len(pool.txStore.allTxs))
 }

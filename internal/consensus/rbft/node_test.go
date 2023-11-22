@@ -242,7 +242,7 @@ func TestReadConfig(t *testing.T) {
 	rbftConf.Logger.Noticef("test notice")
 	ast.Equal(1000, rbftConf.SetSize)
 	ast.Equal(500*time.Millisecond, rbftConf.BatchTimeout)
-	ast.Equal(3*time.Minute, rbftConf.CheckPoolTimeout)
+	ast.Equal(5*time.Minute, rbftConf.CheckPoolTimeout)
 }
 
 func TestStep(t *testing.T) {

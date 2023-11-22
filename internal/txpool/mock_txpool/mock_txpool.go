@@ -15,7 +15,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 
 	txpool "github.com/axiomesh/axiom-kit/txpool"
-	"github.com/axiomesh/axiom-kit/types"
+	types "github.com/axiomesh/axiom-kit/types"
 )
 
 // MockTxPool is a mock of TxPool interface.
@@ -116,17 +116,17 @@ func (c *TxPoolAddRemoteTxsCall[T, Constraint]) DoAndReturn(f func([]*T)) *TxPoo
 }
 
 // FilterOutOfDateRequests mocks base method.
-func (m *MockTxPool[T, Constraint]) FilterOutOfDateRequests() []*T {
+func (m *MockTxPool[T, Constraint]) FilterOutOfDateRequests(timeout bool) []*T {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FilterOutOfDateRequests")
+	ret := m.ctrl.Call(m, "FilterOutOfDateRequests", timeout)
 	ret0, _ := ret[0].([]*T)
 	return ret0
 }
 
 // FilterOutOfDateRequests indicates an expected call of FilterOutOfDateRequests.
-func (mr *MockTxPoolMockRecorder[T, Constraint]) FilterOutOfDateRequests() *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
+func (mr *MockTxPoolMockRecorder[T, Constraint]) FilterOutOfDateRequests(timeout any) *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterOutOfDateRequests", reflect.TypeOf((*MockTxPool[T, Constraint])(nil).FilterOutOfDateRequests))
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterOutOfDateRequests", reflect.TypeOf((*MockTxPool[T, Constraint])(nil).FilterOutOfDateRequests), timeout)
 	return &TxPoolFilterOutOfDateRequestsCall[T, Constraint]{Call: call}
 }
 
@@ -142,13 +142,13 @@ func (c *TxPoolFilterOutOfDateRequestsCall[T, Constraint]) Return(arg0 []*T) *Tx
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *TxPoolFilterOutOfDateRequestsCall[T, Constraint]) Do(f func() []*T) *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
+func (c *TxPoolFilterOutOfDateRequestsCall[T, Constraint]) Do(f func(bool) []*T) *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *TxPoolFilterOutOfDateRequestsCall[T, Constraint]) DoAndReturn(f func() []*T) *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
+func (c *TxPoolFilterOutOfDateRequestsCall[T, Constraint]) DoAndReturn(f func(bool) []*T) *TxPoolFilterOutOfDateRequestsCall[T, Constraint] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
