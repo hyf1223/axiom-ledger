@@ -67,7 +67,7 @@ jobs:
     needs: build-and-release
     steps:
       - name: dingtalk notify
-        uses: axiomesh/release-notify-action@master
+        uses: axiomesh/release-notify-action@feat/release-cd
         with:
           users: ${{ secrets.USERS }}
           webhook: ${{ secrets.WEBHOOK }}
